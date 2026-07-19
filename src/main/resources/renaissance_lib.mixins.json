@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.tkg.RenaissanceLib.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "renaissance_lib.refmap.json",
+  "mixins": [
+    "ModernKineticGunItemMixin"
+  ],
+  "client": [
+    "client.BedrockAttachmentModelMixin",
+    "client.GameRendererMixin",
+    "client.ItemInHandRendererMixin",
+    "client.MinecraftMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

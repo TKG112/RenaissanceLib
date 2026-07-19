@@ -1,0 +1,22 @@
+{
+  "gui.renaissance_lib.gun_refit.property_diagrams.fire_mode": "Fire Modes",
+
+  "gui.renaissance_lib.fire_mode.auto": "Auto",
+  "gui.renaissance_lib.fire_mode.semi": "Semi",
+  "gui.renaissance_lib.fire_mode.burst": "Burst",
+  "gui.renaissance_lib.fire_mode.unknown": "Unknown",
+
+  "tooltip.renaissance_lib.attachment.fire_mode.set": "Redefines available fire modes",
+  "tooltip.renaissance_lib.attachment.fire_mode.add": "Adds a fire mode",
+  "tooltip.renaissance_lib.attachment.fire_mode.remove": "Removes a fire mode",
+
+  "key.category.renaissance_lib": "RenaissanceLib",
+  "key.renaissance_lib.toggle_attachment.scope.desc": "Toggle Scope Attachment",
+  "key.renaissance_lib.toggle_attachment.muzzle.desc": "Toggle Muzzle Attachment",
+  "key.renaissance_lib.toggle_attachment.stock.desc": "Toggle Stock Attachment",
+  "key.renaissance_lib.toggle_attachment.grip.desc": "Toggle Grip Attachment",
+  "key.renaissance_lib.toggle_attachment.laser.desc": "Toggle Laser Attachment",
+  "key.renaissance_lib.toggle_attachment.extended_mag.desc": "Toggle Magazine Attachment",
+
+  "tooltip.renaissance_lib.attachment.toggleable": "Toggleable"
+}

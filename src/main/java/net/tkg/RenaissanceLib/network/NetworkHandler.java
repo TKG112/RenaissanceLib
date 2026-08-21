@@ -23,5 +23,49 @@ public final class NetworkHandler {
                 ClientMessageToggleAttachment::encode,
                 ClientMessageToggleAttachment::decode,
                 ClientMessageToggleAttachment::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetRailSight.class,
+                ClientMessageSetRailSight::encode,
+                ClientMessageSetRailSight::decode,
+                ClientMessageSetRailSight::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetRailLaserColor.class,
+                ClientMessageSetRailLaserColor::encode,
+                ClientMessageSetRailLaserColor::decode,
+                ClientMessageSetRailLaserColor::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetActiveWeapon.class,
+                ClientMessageSetActiveWeapon::encode,
+                ClientMessageSetActiveWeapon::decode,
+                ClientMessageSetActiveWeapon::handle);
+        CHANNEL.registerMessage(id++, ClientMessageFireUnderbarrel.class,
+                ClientMessageFireUnderbarrel::encode,
+                ClientMessageFireUnderbarrel::decode,
+                ClientMessageFireUnderbarrel::handle);
+        CHANNEL.registerMessage(id++, ClientMessageReloadUnderbarrel.class,
+                ClientMessageReloadUnderbarrel::encode,
+                ClientMessageReloadUnderbarrel::decode,
+                ClientMessageReloadUnderbarrel::handle);
+        CHANNEL.registerMessage(id++, ClientMessageCycleUnderbarrelFireMode.class,
+                ClientMessageCycleUnderbarrelFireMode::encode,
+                ClientMessageCycleUnderbarrelFireMode::decode,
+                ClientMessageCycleUnderbarrelFireMode::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetConversionKit.class,
+                ClientMessageSetConversionKit::encode,
+                ClientMessageSetConversionKit::decode,
+                ClientMessageSetConversionKit::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetFireMode.class,
+                ClientMessageSetFireMode::encode,
+                ClientMessageSetFireMode::decode,
+                ClientMessageSetFireMode::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetUnderbarrelFireMode.class,
+                ClientMessageSetUnderbarrelFireMode::encode,
+                ClientMessageSetUnderbarrelFireMode::decode,
+                ClientMessageSetUnderbarrelFireMode::handle);
+        CHANNEL.registerMessage(id++, ClientMessageSetUnderbarrelAttachment.class,
+                ClientMessageSetUnderbarrelAttachment::encode,
+                ClientMessageSetUnderbarrelAttachment::decode,
+                ClientMessageSetUnderbarrelAttachment::handle);
+        CHANNEL.registerMessage(id++, ServerMessageUnderbarrelSound.class,
+                ServerMessageUnderbarrelSound::encode,
+                ServerMessageUnderbarrelSound::decode,
+                ServerMessageUnderbarrelSound::handle);
     }
 }

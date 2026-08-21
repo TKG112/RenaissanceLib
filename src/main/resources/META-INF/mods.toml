@@ -70,9 +70,18 @@ description='''${mod_description}'''
 modId="tacz"
 mandatory=true
 # This version range declares a minimum of the current minecraft version up to but not including the next major version
-versionRange="1.1.7"
+versionRange="1.1.7,"
 ordering="NONE"
 side="BOTH"
+
+# Oculus (Iris) is an OPTIONAL integration for scope shaders under shaderpacks. The mod runs without it
+# (all IrisApi access is isolated behind IrisCompat). Ordering AFTER so Iris is ready when present.
+[[dependencies.${mod_id}]]
+modId="oculus"
+mandatory=false
+versionRange="*"
+ordering="AFTER"
+side="CLIENT"
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't

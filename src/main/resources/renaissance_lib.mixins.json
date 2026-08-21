@@ -5,13 +5,31 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "renaissance_lib.refmap.json",
   "mixins": [
+    "AbstractGunItemMixin",
+    "AttachmentPropertyManagerMixin",
+    "EntityKineticBulletMixin",
+    "JsonDataManagerMixin",
     "ModernKineticGunItemMixin"
   ],
   "client": [
+    "client.AttachmentDisplayMixin",
+    "client.AttachmentDisplayParseMixin",
+    "client.AttachmentItemRendererMixin",
     "client.BedrockAttachmentModelMixin",
+    "client.BedrockGunModelMixin",
+    "client.ClientAttachmentIndexMixin",
+    "client.FireSelectKeyMixin",
+    "client.FirstPersonRenderGunEventMixin",
     "client.GameRendererMixin",
+    "client.GunHudOverlayMixin",
     "client.ItemInHandRendererMixin",
-    "client.MinecraftMixin"
+    "client.LeftHandRenderMixin",
+    "client.MinecraftMixin",
+    "client.MouseHandlerMixin",
+    "client.MouseHandlerSensitivityMixin",
+    "client.ReloadKeyMixin",
+    "client.ShootKeyMixin",
+    "client.ZoomKeyMixin"
   ],
   "injectors": {
     "defaultRequire": 1

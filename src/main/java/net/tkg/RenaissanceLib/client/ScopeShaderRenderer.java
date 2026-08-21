@@ -5,7 +5,6 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.PostChain;
@@ -71,7 +70,10 @@ public final class ScopeShaderRenderer {
         ensureShaderTarget(w, h);
         ensureRawPrograms();
 
-        blitColorQuad(main.getColorTextureId(), shaderTarget, w, h);
+        // The post-shader processes the normal frame inside the lens.
+        int sourceTex = main.getColorTextureId();
+
+        blitColorQuad(sourceTex, shaderTarget, w, h);
         postChain.process(partialTick);
         blitColorQuad(shaderTarget.getColorTextureId(), shadedSnapshot, w, h);
         main.bindWrite(false);
@@ -87,7 +89,7 @@ public final class ScopeShaderRenderer {
     }
 
     public static void compositeIntoLens(int stencilRef) {
-        if (IrisApi.getInstance().isShaderPackInUse()) return;
+        if (IrisCompat.isShaderPackInUse()) return;
         compositeIntoLensInternal(stencilRef);
     }
 
@@ -123,6 +125,7 @@ public final class ScopeShaderRenderer {
             main.bindWrite(false);
             glCheck("Step2 postChain");
 
+            int insideTex = shaderTarget.getColorTextureId();
             int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
             RenderSystem.disableDepthTest();
             RenderSystem.depthMask(false);
@@ -155,7 +158,7 @@ public final class ScopeShaderRenderer {
             GL20.glUseProgram(rawProgramId);
             GL20.glUniform1i(GL20.glGetUniformLocation(rawProgramId, "tex"), 0);
             GlStateManager._activeTexture(GL13.GL_TEXTURE0);
-            GlStateManager._bindTexture(shaderTarget.getColorTextureId());
+            GlStateManager._bindTexture(insideTex);
             drawRawQuad();
             GlStateManager._bindTexture(0);
             glCheck("Step6 insideLens");
@@ -497,7 +500,7 @@ public final class ScopeShaderRenderer {
     }
 
     public static void snapshotPreViewmodelDepth() {
-        if (!IrisApi.getInstance().isShaderPackInUse()) return;
+        if (!IrisCompat.isShaderPackInUse()) return;
         if (depthSnapValid) return;
         if (!ScopeStateTracker.isAimingThroughScope()) return;
 
@@ -612,7 +615,7 @@ public final class ScopeShaderRenderer {
     }
 
     public static void captureLensMaskIris() {
-        if (!IrisApi.getInstance().isShaderPackInUse()) return;
+        if (!IrisCompat.isShaderPackInUse()) return;
         if (!ScopeStateTracker.isAimingThroughScope()) return;
         captureLensMaskGpu();
     }

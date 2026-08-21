@@ -9,6 +9,7 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
 import net.tkg.RenaissanceLib.RenaissanceLibMod;
+import net.tkg.RenaissanceLib.attachment.ShaderSpec;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Reader;
@@ -16,14 +17,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Mod.EventBusSubscriber(modid = RenaissanceLibMod.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
-public class ScopeShaderRegistry extends SimplePreparableReloadListener<Map<ResourceLocation, ResourceLocation>> {
+public class ScopeShaderRegistry extends SimplePreparableReloadListener<Map<ResourceLocation, ShaderSpec>> {
     private static final Gson GSON = new Gson();
     private static final String SEARCH_PATH = "display/attachments";
     private static final String DISPLAY_SUFFIX = "_display";
 
     @Override
-    protected @NotNull Map<ResourceLocation, ResourceLocation> prepare(ResourceManager resourceManager, @NotNull ProfilerFiller profiler) {
-        Map<ResourceLocation, ResourceLocation> map = new HashMap<>();
+    protected @NotNull Map<ResourceLocation, ShaderSpec> prepare(ResourceManager resourceManager, @NotNull ProfilerFiller profiler) {
+        Map<ResourceLocation, ShaderSpec> map = new HashMap<>();
 
         var resources = resourceManager.listResources(SEARCH_PATH, location -> location.getPath().endsWith(".json"));
 
@@ -37,7 +38,10 @@ public class ScopeShaderRegistry extends SimplePreparableReloadListener<Map<Reso
                     continue;
                 }
 
-                String shaderName = json.get("shader").getAsString();
+                ShaderSpec spec = ShaderSpec.parse(json.get("shader"));
+                if (spec == null) {
+                    continue;
+                }
 
                 String path = fileLoc.getPath();
                 String cleanPath = path.substring(SEARCH_PATH.length() + 1, path.length() - 5);
@@ -46,11 +50,7 @@ public class ScopeShaderRegistry extends SimplePreparableReloadListener<Map<Reso
                 }
 
                 ResourceLocation scopeId = ResourceLocation.fromNamespaceAndPath(fileLoc.getNamespace(), cleanPath);
-                ResourceLocation shaderLoc = shaderName.contains(":")
-                        ? ResourceLocation.parse(shaderName)
-                        : ResourceLocation.fromNamespaceAndPath("minecraft", shaderName);
-
-                map.put(scopeId, shaderLoc);
+                map.put(scopeId, spec);
             } catch (Exception ignored) {
             }
         }
@@ -59,7 +59,7 @@ public class ScopeShaderRegistry extends SimplePreparableReloadListener<Map<Reso
     }
 
     @Override
-    protected void apply(Map<ResourceLocation, ResourceLocation> object, @NotNull ResourceManager resourceManager, @NotNull ProfilerFiller profiler) {
+    protected void apply(Map<ResourceLocation, ShaderSpec> object, @NotNull ResourceManager resourceManager, @NotNull ProfilerFiller profiler) {
         ScopeShaderStorage.clear();
         object.forEach(ScopeShaderStorage::setShader);
     }

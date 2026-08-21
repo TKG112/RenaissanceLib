@@ -135,6 +135,7 @@ repositories {
             includeGroup "curse.maven"
         }
     }
+    mavenCentral()
 }
 
 dependencies {
@@ -147,7 +148,15 @@ dependencies {
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
+    // MixinExtras (@WrapOperation). Forge already bundles it at runtime, so compile-only.
+    compileOnly 'io.github.llamalad7:mixinextras-common:0.3.6'
+    annotationProcessor 'io.github.llamalad7:mixinextras-common:0.3.6'
+
     implementation fg.deobf("curse.maven:timeless-and-classics-zero-1028108:8141310")
+
+    // Apache Commons Math — TaC:Z ships it via JarJar (used by its recoil spline functions), so it's on the
+    // runtime classpath. Compile-only here so our underbarrel recoil can reference PolynomialSplineFunction.
+    compileOnly 'org.apache.commons:commons-math3:3.6.1'
 
     implementation fg.deobf("curse.maven:embeddium-908741:5681725")
     implementation fg.deobf("curse.maven:chloride-931925:6504509")

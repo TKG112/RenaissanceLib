@@ -4,6 +4,7 @@ import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.event.common.AttachmentPropertyEvent;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.gun.FireMode;
+import com.tacz.guns.api.modifier.CacheValue;
 import com.tacz.guns.api.modifier.IAttachmentModifier;
 import com.tacz.guns.api.modifier.JsonProperty;
 import com.tacz.guns.resource.modifier.AttachmentPropertyManager;
@@ -48,10 +49,27 @@ public final class AttachmentOverrides {
             if (!modifiers.containsKey(AttachmentStatesModifier.ID)) {
                 modifiers.put(AttachmentStatesModifier.ID, new AttachmentStatesModifier());
             }
+            if (!modifiers.containsKey(ScopeShaderModifier.ID)) {
+                modifiers.put(ScopeShaderModifier.ID, new ScopeShaderModifier());
+            }
+            if (!modifiers.containsKey(RailsModifier.ID)) {
+                modifiers.put(RailsModifier.ID, new RailsModifier());
+            }
+            if (!modifiers.containsKey(UnderbarrelDataModifier.ID)) {
+                modifiers.put(UnderbarrelDataModifier.ID, new UnderbarrelDataModifier());
+            }
+            if (!modifiers.containsKey(ConversionModifier.ID)) {
+                modifiers.put(ConversionModifier.ID, new ConversionModifier());
+            }
+            if (!modifiers.containsKey(FireAnimationModifier.ID)) {
+                modifiers.put(FireAnimationModifier.ID, new FireAnimationModifier());
+            }
             MinecraftForge.EVENT_BUS.register(AttachmentOverrides.class);
             registered = true;
-            RenaissanceLibMod.LOGGER.info("[RenaissanceLib] Registered attachment modifiers '{}', '{}'.",
-                    FireModeModifier.ID, AttachmentStatesModifier.ID);
+            RenaissanceLibMod.LOGGER.info(
+                    "[RenaissanceLib] Registered attachment modifiers '{}', '{}', '{}', '{}', '{}', '{}', '{}'.",
+                    FireModeModifier.ID, AttachmentStatesModifier.ID, ScopeShaderModifier.ID, RailsModifier.ID,
+                    UnderbarrelDataModifier.ID, ConversionModifier.ID, FireAnimationModifier.ID);
         } catch (Throwable t) {
             RenaissanceLibMod.LOGGER.error(
                     "[RenaissanceLib] Failed to register attachment modifiers; "
@@ -61,27 +79,23 @@ public final class AttachmentOverrides {
 
     public static List<FireMode> effectiveFireModes(ItemStack gunItem, GunData gunData) {
         List<FireMode> base = gunData.getFireModeSet();
-        List<Object> specs = new ArrayList<>();
-
-        AttachmentDataUtils.getAllAttachmentData(gunItem, gunData, data -> {
-            JsonProperty<?> property = data.getModifier().get(FireModeModifier.ID);
-            if (property != null && property.getValue() != null) {
-                specs.add(property.getValue());
-            }
-        });
-
+        List<FireModeModifier.Spec> specs = collectFireModeSpecs(gunItem, gunData);
         if (specs.isEmpty()) return base;
 
-        List<FireModeModifier.Spec> typed = new ArrayList<>(specs.size());
-        for (Object o : specs) {
-            if (o instanceof FireModeModifier.Spec spec) typed.add(spec);
-        }
-        if (typed.isEmpty()) return base;
-
-        com.tacz.guns.api.modifier.CacheValue<List<FireMode>> cache =
-                new com.tacz.guns.api.modifier.CacheValue<>(new ArrayList<>(base));
-        new FireModeModifier().eval(typed, cache);
+        CacheValue<List<FireMode>> cache = new CacheValue<>(new ArrayList<>(base));
+        new FireModeModifier().eval(specs, cache);
         return cache.getValue();
+    }
+
+    private static List<FireModeModifier.Spec> collectFireModeSpecs(ItemStack gunItem, GunData gunData) {
+        List<FireModeModifier.Spec> specs = new ArrayList<>();
+        AttachmentDataUtils.getAllAttachmentData(gunItem, gunData, data -> {
+            JsonProperty<?> property = data.getModifier().get(FireModeModifier.ID);
+            if (property != null && property.getValue() instanceof FireModeModifier.Spec spec) {
+                specs.add(spec);
+            }
+        });
+        return specs;
     }
 
     public static List<FireMode> effectiveFireModes(ItemStack gunItem) {
@@ -93,6 +107,39 @@ public final class AttachmentOverrides {
                 .orElse(List.of());
     }
 
+    /**
+     * True if the binary pseudo-mode is available on this gun. Binary is a token in the same
+     * {@code set}/{@code add}/{@code remove} algebra as the real modes, evaluated in the same order:
+     * the gun's own {@code fire_mode} array (recorded natively as {@code script_param.binary_fire_mode})
+     * is the base, then attachment {@code set}s override, {@code add}s enable, {@code remove}s disable.
+     */
+    public static boolean isBinaryCapable(ItemStack gunItem, GunData gunData) {
+        boolean binary = false;
+        Map<String, Object> params = gunData.getScriptParam();
+        if (params != null && isTruthy(params.get("binary_fire_mode"))) {
+            binary = true;
+        }
+
+        List<FireModeModifier.Spec> specs = collectFireModeSpecs(gunItem, gunData);
+        for (FireModeModifier.Spec spec : specs) {
+            if (spec.setPresent()) binary = spec.setHasBinary();
+        }
+        for (FireModeModifier.Spec spec : specs) {
+            if (spec.addHasBinary()) binary = true;
+        }
+        for (FireModeModifier.Spec spec : specs) {
+            if (spec.removeHasBinary()) binary = false;
+        }
+        return binary;
+    }
+
+    private static boolean isTruthy(Object value) {
+        if (value instanceof Boolean b) return b;
+        if (value instanceof Number n) return n.doubleValue() != 0;
+        if (value instanceof String s) return Boolean.parseBoolean(s) || "1".equals(s);
+        return false;
+    }
+
     @SubscribeEvent
     public static void onAttachmentProperty(AttachmentPropertyEvent event) {
         try {
@@ -102,8 +149,20 @@ public final class AttachmentOverrides {
 
             AttachmentStates.applyStateOverrides(gunItem, event.getCacheProperty());
 
-            List<FireMode> available = effectiveFireModes(gunItem);
+            GunData gunData = TimelessAPI.getCommonGunIndex(iGun.getGunId(gunItem))
+                    .map(index -> index.getGunData()).orElse(null);
+            if (gunData == null) return;
+
+            List<FireMode> available = effectiveFireModes(gunItem, gunData);
             if (available.isEmpty()) return;
+
+            if (BinaryFireMode.isActive(gunItem)) {
+                // Binary keeps SEMI as its underlying mode on purpose; don't clamp it away while the
+                // gun is still binary-capable. If capability was just lost (e.g. the binary-granting
+                // attachment was removed), drop the flag and fall through to a normal clamp.
+                if (isBinaryCapable(gunItem, gunData)) return;
+                BinaryFireMode.setActive(gunItem, false);
+            }
 
             FireMode current = iGun.getFireMode(gunItem);
             if (!available.contains(current)) {

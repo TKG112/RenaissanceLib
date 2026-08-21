@@ -45,21 +45,21 @@ public class FireModeModifier implements IAttachmentModifier<FireModeModifier.Sp
         List<FireMode> result = new ArrayList<>(cache.getValue());
 
         for (Spec spec : modifiers) {
-            if (spec != null && spec.getSet() != null && !spec.getSet().isEmpty()) {
-                result = new ArrayList<>(spec.getSet());
+            if (spec != null && spec.setPresent()) {
+                result = new ArrayList<>(spec.getSetModes());
             }
         }
         for (Spec spec : modifiers) {
-            if (spec == null || spec.getAdd() == null) continue;
-            for (FireMode mode : spec.getAdd()) {
-                if (mode != null && mode != FireMode.UNKNOWN && !result.contains(mode)) {
+            if (spec == null) continue;
+            for (FireMode mode : spec.getAddModes()) {
+                if (mode != FireMode.UNKNOWN && !result.contains(mode)) {
                     result.add(mode);
                 }
             }
         }
         for (Spec spec : modifiers) {
-            if (spec != null && spec.getRemove() != null) {
-                result.removeAll(spec.getRemove());
+            if (spec != null) {
+                result.removeAll(spec.getRemoveModes());
             }
         }
 
@@ -148,31 +148,91 @@ public class FireModeModifier implements IAttachmentModifier<FireModeModifier.Sp
     }
 
     public static class Spec {
+        // Parsed as raw strings, not List<FireMode>, so "binary" can sit in the list next to the
+        // real modes: Gson would turn an unknown enum token into null, corrupting the list. We split
+        // the tokens ourselves into real FireModes (getXModes) and the binary pseudo-mode (xHasBinary).
         @SerializedName("set")
         @Nullable
-        private List<FireMode> set = null;
+        private List<String> set = null;
 
         @SerializedName("add")
         @Nullable
-        private List<FireMode> add = null;
+        private List<String> add = null;
 
         @SerializedName("remove")
         @Nullable
-        private List<FireMode> remove = null;
+        private List<String> remove = null;
 
         @Nullable
-        public List<FireMode> getSet() {
+        public List<String> getSet() {
             return set;
         }
 
         @Nullable
-        public List<FireMode> getAdd() {
+        public List<String> getAdd() {
             return add;
         }
 
         @Nullable
-        public List<FireMode> getRemove() {
+        public List<String> getRemove() {
             return remove;
+        }
+
+        public boolean setPresent() {
+            return set != null && !set.isEmpty();
+        }
+
+        public List<FireMode> getSetModes() {
+            return toModes(set);
+        }
+
+        public List<FireMode> getAddModes() {
+            return toModes(add);
+        }
+
+        public List<FireMode> getRemoveModes() {
+            return toModes(remove);
+        }
+
+        public boolean setHasBinary() {
+            return hasBinary(set);
+        }
+
+        public boolean addHasBinary() {
+            return hasBinary(add);
+        }
+
+        public boolean removeHasBinary() {
+            return hasBinary(remove);
+        }
+
+        private static List<FireMode> toModes(@Nullable List<String> tokens) {
+            if (tokens == null) return Collections.emptyList();
+            List<FireMode> modes = new ArrayList<>(tokens.size());
+            for (String token : tokens) {
+                FireMode mode = parseMode(token);
+                if (mode != null) modes.add(mode);
+            }
+            return modes;
+        }
+
+        private static boolean hasBinary(@Nullable List<String> tokens) {
+            if (tokens == null) return false;
+            for (String token : tokens) {
+                if (token != null && "binary".equalsIgnoreCase(token.trim())) return true;
+            }
+            return false;
+        }
+
+        @Nullable
+        private static FireMode parseMode(@Nullable String token) {
+            if (token == null) return null;
+            switch (token.trim().toLowerCase(java.util.Locale.ENGLISH)) {
+                case "auto":  return FireMode.AUTO;
+                case "semi":  return FireMode.SEMI;
+                case "burst": return FireMode.BURST;
+                default:      return null; // "binary" (handled separately) or anything unrecognized
+            }
         }
     }
 }

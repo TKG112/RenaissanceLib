@@ -11,12 +11,27 @@
   "tooltip.renaissance_lib.attachment.fire_mode.remove": "Removes a fire mode",
 
   "key.category.renaissance_lib": "RenaissanceLib",
-  "key.renaissance_lib.toggle_attachment.scope.desc": "Toggle Scope Attachment",
-  "key.renaissance_lib.toggle_attachment.muzzle.desc": "Toggle Muzzle Attachment",
-  "key.renaissance_lib.toggle_attachment.stock.desc": "Toggle Stock Attachment",
-  "key.renaissance_lib.toggle_attachment.grip.desc": "Toggle Grip Attachment",
-  "key.renaissance_lib.toggle_attachment.laser.desc": "Toggle Laser Attachment",
-  "key.renaissance_lib.toggle_attachment.extended_mag.desc": "Toggle Magazine Attachment",
+  "key.renaissance_lib.attachment_wheel.desc": "Open Attachment Wheel",
+  "key.renaissance_lib.weapon_wheel.desc": "Switch Weapon (main / underbarrel)",
 
-  "tooltip.renaissance_lib.attachment.toggleable": "Toggleable"
+  "gui.renaissance_lib.weapon_wheel.main": "Main Gun",
+
+  "tooltip.renaissance_lib.attachment.toggleable": "Toggleable",
+
+  "tooltip.renaissance_lib.rail.canted": "Canted Sight",
+  "tooltip.renaissance_lib.rail.top": "Top Rail",
+  "tooltip.renaissance_lib.rail.side": "Side Rail",
+  "tooltip.renaissance_lib.rail.laser_mount": "Laser Mount",
+  "tooltip.renaissance_lib.rail.generic": "Rail Mount",
+  "tooltip.renaissance_lib.rail.laser_color": "Laser Color",
+
+  "tooltip.renaissance_lib.fire_mode.binary": "Binary",
+
+  "tooltip.renaissance_lib.conversion.slot": "Conversion Kit",
+  "tooltip.renaissance_lib.conversion.converts_to": "Converts to: ",
+  "tooltip.renaissance_lib.conversion.locks": "Locks incompatible attachments",
+
+  "tooltip.renaissance_lib.underbarrel.header": "Underbarrel Weapon",
+  "tooltip.renaissance_lib.underbarrel.rpm": "Fire Rate (RPM): ",
+  "tooltip.renaissance_lib.underbarrel.fire_modes": "Fire Modes: "
 }

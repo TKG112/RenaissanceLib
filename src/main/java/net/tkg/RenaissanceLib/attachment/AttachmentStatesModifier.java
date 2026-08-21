@@ -27,6 +27,12 @@ public class AttachmentStatesModifier implements IAttachmentModifier<AttachmentS
 
     public static final String ANIMATION_FILE_KEY = "animation_file";
 
+    public static final String ZOOM_KEY_TOGGLE_KEY = "zoom_key_toggle";
+
+    public static final String REQUIRE_KEY = "require";
+
+    public static final String COOLDOWN_KEY = "cooldown";
+
     @Override
     public String getId() {
         return ID;
@@ -47,6 +53,17 @@ public class AttachmentStatesModifier implements IAttachmentModifier<AttachmentS
 
             if (statesObj.has(ANIMATION_FILE_KEY) && statesObj.get(ANIMATION_FILE_KEY).isJsonPrimitive()) {
                 states.setAnimationFile(statesObj.get(ANIMATION_FILE_KEY).getAsString());
+            }
+
+            if (statesObj.has(ZOOM_KEY_TOGGLE_KEY) && statesObj.get(ZOOM_KEY_TOGGLE_KEY).isJsonPrimitive()) {
+                states.setZoomKeyToggle(statesObj.get(ZOOM_KEY_TOGGLE_KEY).getAsBoolean());
+            }
+
+            if (statesObj.has(COOLDOWN_KEY) && statesObj.get(COOLDOWN_KEY).isJsonPrimitive()) {
+                try {
+                    states.setCooldownSeconds(statesObj.get(COOLDOWN_KEY).getAsFloat());
+                } catch (Exception ignored) {
+                }
             }
 
             if (statesObj.has("cycle") && statesObj.get("cycle").isJsonArray()) {
@@ -100,6 +117,9 @@ public class AttachmentStatesModifier implements IAttachmentModifier<AttachmentS
         private JsonObject raw;
         @Nullable
         private String animationFile = null;
+        private boolean zoomKeyToggle = true;
+        @Nullable
+        private Float cooldownSeconds = null;
 
         void setRaw(JsonObject raw) {
             this.raw = raw;
@@ -112,6 +132,40 @@ public class AttachmentStatesModifier implements IAttachmentModifier<AttachmentS
         @Nullable
         public String getAnimationFile() {
             return animationFile;
+        }
+
+        void setZoomKeyToggle(boolean zoomKeyToggle) {
+            this.zoomKeyToggle = zoomKeyToggle;
+        }
+
+        public boolean isZoomKeyToggle() {
+            return zoomKeyToggle;
+        }
+
+        void setCooldownSeconds(float cooldownSeconds) {
+            this.cooldownSeconds = cooldownSeconds;
+        }
+
+        /**
+         * Cooldown, in ticks, before the attachment may be toggled again after entering {@code
+         * stateName}. Reads that state's {@code cooldown} (seconds), else the top-level {@code
+         * cooldown}, else 0 (no cooldown). Lets an author require the toggle animation to finish.
+         */
+        public int getCooldownTicks(String stateName) {
+            Float seconds = null;
+            JsonObject body = bodies.get(stateName);
+            if (body != null) {
+                JsonElement cd = body.get(COOLDOWN_KEY);
+                if (cd != null && cd.isJsonPrimitive()) {
+                    try {
+                        seconds = cd.getAsFloat();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            if (seconds == null) seconds = cooldownSeconds;
+            if (seconds == null || seconds <= 0f) return 0;
+            return Math.round(seconds * 20f);
         }
 
         void setCycle(@Nullable List<String> cycle) {
@@ -172,10 +226,35 @@ public class AttachmentStatesModifier implements IAttachmentModifier<AttachmentS
             return anim != null && anim.isJsonPrimitive() ? anim.getAsString() : null;
         }
 
+        public List<String> getRequire(String stateName) {
+            JsonObject body = bodies.get(stateName);
+            if (body == null) return java.util.Collections.emptyList();
+            JsonElement req = body.get(REQUIRE_KEY);
+            if (req == null) return java.util.Collections.emptyList();
+            List<String> result = new ArrayList<>();
+            if (req.isJsonPrimitive()) {
+                result.add(req.getAsString());
+            } else if (req.isJsonArray()) {
+                req.getAsJsonArray().forEach(e -> {
+                    if (e.isJsonPrimitive()) result.add(e.getAsString());
+                });
+            }
+            return result;
+        }
+
         public String next(String current) {
             if (bakedCycle.isEmpty()) return current;
             int index = bakedCycle.indexOf(current);
             return bakedCycle.get((index + 1) % bakedCycle.size());
+        }
+
+        @Nullable
+        public String stateForZoomIndex(int zoomIndex) {
+            for (String name : bakedCycle) {
+                Integer zi = getZoomIndex(name);
+                if (zi != null && zi == zoomIndex) return name;
+            }
+            return null;
         }
     }
 }

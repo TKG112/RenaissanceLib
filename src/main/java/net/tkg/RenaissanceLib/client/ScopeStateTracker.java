@@ -1,9 +1,13 @@
 package net.tkg.RenaissanceLib.client;
 
 import com.tacz.guns.api.DefaultAssets;
+import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.entity.IGunOperator;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
+import com.tacz.guns.api.item.nbt.AttachmentItemDataAccessor;
+import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -55,8 +59,23 @@ public class ScopeStateTracker {
             return;
         }
 
-        ResourceLocation shader = ScopeShaderStorage.getShader(scopeId);
+        ResourceLocation shader = ScopeShaderStorage.getShader(scopeId, getCurrentViewIndex(mainHand, iGun, scopeId));
         updateState(shader != null, shader);
+    }
+
+    public static int getCurrentViewIndex(ItemStack gunItem, IGun iGun, ResourceLocation scopeId) {
+        try {
+            int[] views = TimelessAPI.getClientAttachmentIndex(scopeId)
+                    .map(ClientAttachmentIndex::getViews)
+                    .orElse(null);
+            if (views == null || views.length == 0) return 0;
+
+            CompoundTag scopeTag = iGun.getAttachmentTag(gunItem, AttachmentType.SCOPE);
+            int zoomNumber = AttachmentItemDataAccessor.getZoomNumberFromTag(scopeTag);
+            return views[Math.floorMod(zoomNumber, views.length)] - 1;
+        } catch (Throwable t) {
+            return 0;
+        }
     }
 
     private static void updateState(boolean holding, @Nullable ResourceLocation shader) {

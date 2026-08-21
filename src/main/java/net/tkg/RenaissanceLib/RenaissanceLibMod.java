@@ -13,14 +13,17 @@ import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.tkg.RenaissanceLib.attachment.AttachmentOverrides;
 import net.tkg.RenaissanceLib.client.AttachmentAnimationManager;
 import net.tkg.RenaissanceLib.client.ScopeShaderRegistry;
-import net.tkg.RenaissanceLib.client.input.AttachmentToggleKey;
+import net.tkg.RenaissanceLib.client.input.AttachmentWheelKey;
+import net.tkg.RenaissanceLib.client.input.WeaponSelectKey;
 import net.tkg.RenaissanceLib.network.NetworkHandler;
 import net.tkg.RenaissanceLib.client.ShaderManager;
 import org.slf4j.Logger;
@@ -38,6 +41,8 @@ public class RenaissanceLibMod {
 
         MinecraftForge.EVENT_BUS.register(this);
         modEventBus.addListener(this::addCreative);
+
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, RenaissanceConfig.CLIENT_SPEC);
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
@@ -60,8 +65,17 @@ public class RenaissanceLibMod {
         }
 
         @SubscribeEvent
+        public static void onRegisterTooltipFactories(
+                net.minecraftforge.client.event.RegisterClientTooltipComponentFactoriesEvent event) {
+            event.register(
+                    net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelStatsTooltip.class,
+                    net.tkg.RenaissanceLib.client.underbarrel.ClientUnderbarrelStatsTooltip::new);
+        }
+
+        @SubscribeEvent
         public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
-            AttachmentToggleKey.KEYS.values().forEach(event::register);
+            event.register(AttachmentWheelKey.OPEN_WHEEL);
+            event.register(WeaponSelectKey.SELECT_WEAPON);
         }
 
         @SubscribeEvent

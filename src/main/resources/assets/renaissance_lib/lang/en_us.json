@@ -27,6 +27,8 @@
 
   "tooltip.renaissance_lib.fire_mode.binary": "Binary",
 
+  "hud.renaissance_lib.underbarrel_fire_mode": "Underbarrel",
+
   "tooltip.renaissance_lib.conversion.slot": "Conversion Kit",
   "tooltip.renaissance_lib.conversion.converts_to": "Converts to: ",
   "tooltip.renaissance_lib.conversion.locks": "Locks incompatible attachments",

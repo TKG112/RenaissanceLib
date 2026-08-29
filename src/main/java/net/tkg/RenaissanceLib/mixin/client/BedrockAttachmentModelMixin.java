@@ -6,6 +6,7 @@ import com.mojang.math.Axis;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
+import com.tacz.guns.compat.ar.ARCompat;
 import com.tacz.guns.util.RenderHelper;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -17,7 +18,6 @@ import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAnimator;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelClient;
 import net.tkg.RenaissanceLib.client.IRailGunItemAccessor;
-import net.tkg.RenaissanceLib.client.IrisCompat;
 import net.tkg.RenaissanceLib.client.RailPassengerClip;
 import net.tkg.RenaissanceLib.client.ShaderManager;
 import net.tkg.RenaissanceLib.client.ScopeShaderRenderer;
@@ -226,43 +226,106 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
         if (renaissance$renderClippedPassenger(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
     }
 
-    private static final String RENDER_OCULAR_AND_DIVISION =
-            "Lcom/tacz/guns/client/model/BedrockAttachmentModel;" +
-                    "renderOcularAndDivision(" +
-                    "Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;IIZ)V";
+    // ---- Accelerated Rendering (the `acceleratedrendering` mod) passenger clip --------------------
+    // TaC:Z routes scope rendering through separate *Accelerated methods when that mod is active; those defer
+    // draws and express stencil masking through ARCompat's layer + before/after runnables instead of immediate
+    // GL. So the immediate-path hooks above never fire, and passengers wouldn't clip. These mirror the clip via
+    // the same ARCompat API TaC:Z uses (layers -943/-942/-941 for the active optic; the passenger sits just
+    // after, at RENAISSANCE_AR_PASSENGER_LAYER). BLIND — the `acceleratedrendering` mod isn't in the dev
+    // workspace (shouldAccelerate() is false here), so the layer number is provisional and needs in-game tuning.
 
-    @Inject(
-            method = "renderScope(Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;II)V",
-            at = @At(value = "INVOKE", target = RENDER_OCULAR_AND_DIVISION, shift = At.Shift.BEFORE),
-            remap = false
-    )
-    private void renaissance$beforeOcularAndDivision_Scope(
-            PoseStack matrixStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
-        // Post-shader composites here (before the carve, whole ocular). Vision composites AFTER the carve
-        // into the aperture instead (see the TAIL hook) — that's what lets the double render use the real
-        // main target without breaking TaCZ's ocular carve.
-        if (ShaderManager.isShaderActive()) {
-            ScopeShaderRenderer.compositeIntoLens(0);
+    /**
+     * AR draw layer for a clipped passenger — after the active optic's layers (-943/-942/-941) and after the
+     * gun body's own clip layer (TaC:Z uses -940 for it), on its own layer so their before/after runnables
+     * don't clash. Provisional — needs in-game tuning with the mod installed.
+     */
+    private static final int RENAISSANCE_AR_PASSENGER_LAYER = -939;
+
+    /** Accelerated counterpart of {@link #renaissance$renderClippedPassenger}: queues the body clipped via ARCompat. */
+    private boolean renaissance$renderClippedPassengerAccelerated(PoseStack matrixStack, ItemDisplayContext transformType,
+                                                                 RenderType renderType, int light, int overlay) {
+        RailPassengerClip.Mask mask = RailPassengerClip.current();
+        if (mask == null) return false;
+
+        ARCompat.setRenderLayer(RENAISSANCE_AR_PASSENGER_LAYER);
+        ARCompat.setRenderBeforeFunction(() -> {
+            RenderHelper.enableItemEntityStencilTest();
+            RenderSystem.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+            RenderSystem.stencilFunc(mask.func(), mask.ref(), 0xFF);
+        });
+        ARCompat.setRenderAfterFunction(() -> {
+            RenderSystem.stencilFunc(GL11.GL_ALWAYS, 0, 0xFF);
+            RenderHelper.disableItemEntityStencilTest();
+        });
+        if (scopeBodyPath != null) {
+            renderTempPart(matrixStack, transformType, renderType, light, overlay, scopeBodyPath);
         }
+        if (ocularRingPath != null) {
+            renderTempPart(matrixStack, transformType, renderType, light, overlay, ocularRingPath);
+        }
+        ARCompat.resetRenderLayer();
+        ARCompat.resetRenderBeforeFunction();
+        ARCompat.resetRenderAfterFunction();
+        return true;
     }
 
     @Inject(
-            method = "renderBoth(Lcom/mojang/blaze3d/vertex/PoseStack;" +
+            method = "renderScopeAccelerated(Lcom/mojang/blaze3d/vertex/PoseStack;" +
                     "Lnet/minecraft/world/item/ItemDisplayContext;" +
                     "Lnet/minecraft/client/renderer/RenderType;II)V",
-            at = @At(value = "INVOKE", target = RENDER_OCULAR_AND_DIVISION, shift = At.Shift.BEFORE),
-            remap = false
+            at = @At("HEAD"), cancellable = true, remap = false, require = 0
     )
-    private void renaissance$beforeOcularAndDivision_Both(
+    private void renaissance$clipPassengerAccelerated_Scope(
             PoseStack matrixStack, ItemDisplayContext transformType,
             RenderType renderType, int light, int overlay, CallbackInfo ci) {
+        if (renaissance$renderClippedPassengerAccelerated(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
+    }
+
+    @Inject(
+            method = "renderSightAccelerated(Lcom/mojang/blaze3d/vertex/PoseStack;" +
+                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
+                    "Lnet/minecraft/client/renderer/RenderType;II)V",
+            at = @At("HEAD"), cancellable = true, remap = false, require = 0
+    )
+    private void renaissance$clipPassengerAccelerated_Sight(
+            PoseStack matrixStack, ItemDisplayContext transformType,
+            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+        if (renaissance$renderClippedPassengerAccelerated(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
+    }
+
+    @Inject(
+            method = "renderBothAccelerated(Lcom/mojang/blaze3d/vertex/PoseStack;" +
+                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
+                    "Lnet/minecraft/client/renderer/RenderType;II)V",
+            at = @At("HEAD"), cancellable = true, remap = false, require = 0
+    )
+    private void renaissance$clipPassengerAccelerated_Both(
+            PoseStack matrixStack, ItemDisplayContext transformType,
+            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+        if (renaissance$renderClippedPassengerAccelerated(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
+    }
+
+    /**
+     * Composites the shaded scene into the lens <em>after</em> TaC:Z's aperture carve but before it draws the
+     * ocular mask + reticle. Injected right after the second {@code stencilOp} in {@code renderOcularAndDivision}
+     * (the {@code KEEP,KEEP,KEEP} that ends the carve loop), so the carved-aperture stencil (bit 0x80) is set and
+     * the composite paints only the aperture — leaving the ocular rim/mask region untouched. Compositing over the
+     * whole ocular before the carve (the old approach) overwrote the scope's own inner ring, so TaC:Z's black mask
+     * showed on top of it as a dark ring. The reticle division draws over this composite afterwards, on top.
+     */
+    @Inject(
+            method = "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;" +
+                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
+                    "Lnet/minecraft/client/renderer/RenderType;IIZ)V",
+            at = @At(value = "INVOKE", ordinal = 1, shift = At.Shift.AFTER,
+                    target = "Lcom/mojang/blaze3d/systems/RenderSystem;stencilOp(III)V"),
+            remap = false
+    )
+    private void renaissance$compositeAfterCarve(
+            PoseStack matrixStack, ItemDisplayContext transformType,
+            RenderType renderType, int light, int overlay, boolean selective, CallbackInfo ci) {
         if (ShaderManager.isShaderActive()) {
-            ScopeShaderRenderer.compositeIntoLens(2);
+            ScopeShaderRenderer.compositeIntoLens();
         }
     }
 
@@ -276,8 +339,9 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
     private void renaissance$afterOcularAndDivision(
             PoseStack matrixStack, ItemDisplayContext transformType,
             RenderType renderType, int light, int overlay, boolean selective, CallbackInfo ci) {
-        // Under a shaderpack the post-shader composites the lens mask at end-of-frame; capture it here.
-        if (IrisCompat.isShaderPackInUse() && ShaderManager.isShaderActive()) {
+        // For the end-of-frame composite (Iris shaderpack OR Accelerated Rendering), capture the lens mask now
+        // — this runs in both the immediate and the AR-deferred ocular draw, so AR gets its mask too.
+        if (ScopeShaderRenderer.useEndOfFramePath() && ShaderManager.isShaderActive()) {
             ScopeShaderRenderer.captureLensMaskIris();
         }
     }

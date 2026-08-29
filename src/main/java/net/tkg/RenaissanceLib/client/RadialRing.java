@@ -82,6 +82,39 @@ public final class RadialRing {
      */
     public static void drawRing(GuiGraphics gg, int n, int highlighted, int cx, int cy,
                                 float ease, double pointerAngleDeg) {
+        drawRing(gg, n, highlighted, cx, cy, ease, pointerAngleDeg, SEG_BASE, SEG_HL);
+    }
+
+    /**
+     * As {@link #drawRing(GuiGraphics, int, int, int, int, float, double)} but with caller-chosen segment
+     * colours — used to tint a whole wheel a distinct hue.
+     *
+     * @param segBase resting segment colour (ARGB); @param segHl highlighted segment colour (ARGB)
+     */
+    public static void drawRing(GuiGraphics gg, int n, int highlighted, int cx, int cy,
+                                float ease, double pointerAngleDeg, int segBase, int segHl) {
+        drawRing(gg, n, highlighted, cx, cy, ease, pointerAngleDeg, segBase, segHl, null, 0, 0);
+    }
+
+    /**
+     * Per-segment tint over the <em>default</em> ring colours: segments flagged in {@code special} draw with
+     * {@code specialBase}/{@code specialHl}, the rest with the standard blue.
+     */
+    public static void drawRing(GuiGraphics gg, int n, int highlighted, int cx, int cy,
+                                float ease, double pointerAngleDeg,
+                                boolean[] special, int specialBase, int specialHl) {
+        drawRing(gg, n, highlighted, cx, cy, ease, pointerAngleDeg, SEG_BASE, SEG_HL,
+                special, specialBase, specialHl);
+    }
+
+    /**
+     * As the colour overload, but tints only the segments flagged in {@code special} with
+     * {@code specialBase}/{@code specialHl} — used for a mixed wheel (e.g. host gun modes vs. underbarrel
+     * modes in the same ring). {@code special} may be shorter than {@code n} (missing entries treated false).
+     */
+    public static void drawRing(GuiGraphics gg, int n, int highlighted, int cx, int cy,
+                                float ease, double pointerAngleDeg, int segBase, int segHl,
+                                boolean[] special, int specialBase, int specialHl) {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         // No back-face culling: our triangles (annulus vs. centre fan vs. arrow) don't share a winding order,
@@ -96,7 +129,9 @@ public final class RadialRing {
         annulus(bb, mat, cx, cy, INNER_R - 2, OUTER_R + 3, 0f, 360f, scaleA(BACKDROP, ease * 0.85f));
 
         if (n == 1) {
-            annulus(bb, mat, cx, cy, INNER_R, OUTER_R, 0f, 360f, scaleA(SEG_HL, ease), scaleA(SEG_HL, ease * 0.6f));
+            boolean sp0 = special != null && special.length > 0 && special[0];
+            int hlC = sp0 ? specialHl : segHl;
+            annulus(bb, mat, cx, cy, INNER_R, OUTER_R, 0f, 360f, scaleA(hlC, ease), scaleA(hlC, ease * 0.6f));
         } else {
             float seg = 360f / n;
             for (int i = 0; i < n; i++) {
@@ -104,8 +139,11 @@ public final class RadialRing {
                 float a0 = center - seg / 2f + GAP_DEG;
                 float a1 = center + seg / 2f - GAP_DEG;
                 boolean hi = i == highlighted;
-                int outerC = hi ? scaleA(SEG_HL, ease) : scaleA(SEG_BASE, ease);
-                int innerC = hi ? scaleA(SEG_HL, ease * 0.55f) : scaleA(SEG_BASE, ease * 0.85f);
+                boolean sp = special != null && i < special.length && special[i];
+                int baseC = sp ? specialBase : segBase;
+                int hlC = sp ? specialHl : segHl;
+                int outerC = hi ? scaleA(hlC, ease) : scaleA(baseC, ease);
+                int innerC = hi ? scaleA(hlC, ease * 0.55f) : scaleA(baseC, ease * 0.85f);
                 annulus(bb, mat, cx, cy, INNER_R, OUTER_R, a0, a1, outerC, innerC);
             }
         }

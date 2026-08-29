@@ -14,6 +14,7 @@ import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.client.ActiveOptic;
 import net.tkg.RenaissanceLib.client.RailAim;
+import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAim;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelCameraAnchor;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelTransition;
 import org.joml.Matrix4f;
@@ -139,6 +140,14 @@ public abstract class FirstPersonRenderGunEventMixin {
             List<BedrockPart> nodePath,
             PoseStack poseStack, BedrockGunModel model, ItemStack stack,
             float aimingProgress, float refitScreenOpeningProgress) {
+        // Optional underbarrel iron sights: when the active underbarrel declares an iron_view node, aim through
+        // it (gun grip node + underbarrel iron_view) instead of the host gun's iron sights. TaC:Z smooths this
+        // returned matrix itself (oldAimingViewMatrix), so no extra easing is needed here. Falls through to the
+        // host/rail aim when the underbarrel has no iron sights.
+        if (UnderbarrelAim.isIronAimActive(stack)) {
+            Matrix4f ubAim = UnderbarrelAim.aimMatrix(model, stack);
+            if (ubAim != null) return ubAim;
+        }
         return RailAim.easedAimMatrix(nodePath, stack);
     }
 }

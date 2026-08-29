@@ -57,6 +57,8 @@ public final class RailRefitOverlay {
     /** Vertical pitch between stacked host rows — a slot plus a gap for the hover name / unload button. */
     private static final int ROW_PITCH = SIZE + 12;
     private static final int ROW_Y0 = 10 + STEP;
+    /** Small gap between sub-slot groups (the rail rows, their panel, and the underbarrel's row). */
+    private static final int GROUP_GAP = 3;
     private static final int MAX_PICKER = 8;
     private static final int DISPLAY_OUTLINE = 0xFFFFA500; // orange — the current host
     private static final int BACK_OUTLINE = 0xFF66CCFF;    // blue — the back button
@@ -145,9 +147,15 @@ public final class RailRefitOverlay {
         return ROW_Y0 + hostIndex * ROW_PITCH;
     }
 
-    /** Y of the focused-slot panel (picker / unload), below every host row. */
-    private static int panelY(int hostCount) {
-        return ROW_Y0 + hostCount * ROW_PITCH + 4;
+    /** Bottom edge of the last rail host row's slots. */
+    private static int railBlockBottom(ItemStack gunItem) {
+        int hosts = ScopeRails.getRailHosts(gunItem).size();
+        return ROW_Y0 + Math.max(0, hosts - 1) * ROW_PITCH + SIZE;
+    }
+
+    /** Y of the focused-slot panel (picker / unload), tucked just below the host rows. */
+    private static int panelY(ItemStack gunItem) {
+        return railBlockBottom(gunItem) + GROUP_GAP;
     }
 
     private static int indexOfHost(List<ScopeRails.RailHost> hosts, AttachmentType type) {
@@ -220,7 +228,7 @@ public final class RailRefitOverlay {
         List<RailsModifier.RailSlot> focusedSlots = currentSlots(gunItem);
         if (selectedSlot >= 0 && selectedSlot < focusedSlots.size()) {
             int selX = railSlotX(displayX, selectedSlot);
-            int panelY = panelY(hosts.size());
+            int panelY = panelY(gunItem);
             ItemStack mounted = mountedAt(gunItem, selectedSlot);
             if (!mounted.isEmpty()) {
                 drawUnloadButton(graphics, selX + UNLOAD_DX, panelY,
@@ -249,7 +257,7 @@ public final class RailRefitOverlay {
         if (selectedSlot >= 0 && selectedSlot < focusedSlots.size()
                 && mountedAt(gunItem, selectedSlot).isEmpty()) {
             int selX = railSlotX(displayX, selectedSlot);
-            int panelY = panelY(hosts.size());
+            int panelY = panelY(gunItem);
             List<Integer> optics = collectInventorySights(player,
                     focusedSlots.get(selectedSlot).getAllow(), viewPath.hostType());
             for (int j = 0; j < optics.size(); j++) {
@@ -325,7 +333,7 @@ public final class RailRefitOverlay {
         List<RailsModifier.RailSlot> focusedSlots = currentSlots(gunItem);
         if (selectedSlot >= 0 && selectedSlot < focusedSlots.size()) {
             int selX = railSlotX(displayX, selectedSlot);
-            int panelY = panelY(hosts.size());
+            int panelY = panelY(gunItem);
             ItemStack mounted = mountedAt(gunItem, selectedSlot);
             if (!mounted.isEmpty()) {
                 if (inRect(mouseX, mouseY, selX + UNLOAD_DX, panelY, UNLOAD_SIZE, UNLOAD_SIZE)) {
@@ -424,6 +432,38 @@ public final class RailRefitOverlay {
 
     private static int railSlotX(int displayX, int index) {
         return displayX - (index + 1) * STEP;
+    }
+
+    // ---- Shared layout (so the underbarrel's own attachment row matches this one) -----------------
+
+    /** The host-marker column: the right-anchored column every sub-slot row (rails, underbarrel) hangs from. */
+    public static int anchorX(int screenWidth) {
+        return screenWidth - 30;
+    }
+
+    /** Column x of sub-slot {@code index} in a row anchored at {@code anchorX} (stacking left of the marker). */
+    public static int slotColumnX(int anchorX, int index) {
+        return anchorX - (index + 1) * STEP;
+    }
+
+    /**
+     * Y where the next sub-slot row (the underbarrel's) should sit: tucked just below the rail host rows, and
+     * pushed further down only while a rail slot is in use (its unload/picker panel occupies that space) — so
+     * the rows sit close together and "move apart" dynamically when a rail attachment is being handled.
+     */
+    public static int subRowBottomY(LocalPlayer player, ItemStack gunItem) {
+        List<ScopeRails.RailHost> hosts = ScopeRails.getRailHosts(gunItem);
+        if (hosts.isEmpty()) return ROW_Y0; // no rail rows — the underbarrel's row is the first sub-row
+        int y = railBlockBottom(gunItem) + GROUP_GAP; // right below the rail rows (the panel's top)
+        List<RailsModifier.RailSlot> slots = currentSlots(gunItem);
+        if (selectedSlot >= 0 && selectedSlot < slots.size()) {
+            ItemStack mounted = mountedAt(gunItem, selectedSlot);
+            int panelHeight = mounted.isEmpty()
+                    ? collectInventorySights(player, slots.get(selectedSlot).getAllow(), viewPath.hostType()).size() * SIZE
+                    : (UNLOAD_SIZE + 2);
+            y += panelHeight + GROUP_GAP;
+        }
+        return y;
     }
 
     private static void drawSlot(GuiGraphics graphics, int x, int y, boolean outlined) {

@@ -88,9 +88,23 @@ public final class ScopeShaderRenderer {
         shadedReady = true;
     }
 
-    public static void compositeIntoLens(int stencilRef) {
-        if (IrisCompat.isShaderPackInUse()) return;
-        compositeIntoLensInternal(stencilRef);
+    /** True under an active Iris/Oculus shaderpack (world rendering is deferred, so no mid-frame snapshot). */
+    public static boolean isIrisShaderpack() {
+        return IrisCompat.isShaderPackInUse();
+    }
+
+    /**
+     * Whether the in-lens composite is deferred to end-of-frame instead of done mid-frame during the scope render.
+     * True only under an Iris/Oculus shaderpack (Iris defers world rendering, so the scene isn't on the main target
+     * mid-frame); otherwise the effect composites mid-frame during the scope's ocular draw.
+     */
+    public static boolean useEndOfFramePath() {
+        return isIrisShaderpack();
+    }
+
+    public static void compositeIntoLens() {
+        if (useEndOfFramePath()) return; // deferred to endOfFrameIrisComposite
+        compositeIntoLensInternal();
     }
 
     private static void glCheck(String label) {
@@ -237,35 +251,46 @@ public final class ScopeShaderRenderer {
         if (shaderTarget != null) { shaderTarget.destroyBuffers(); shaderTarget = null; }
     }
 
-    private static void compositeIntoLensInternal(int stencilRef) {
+    private static void compositeIntoLensInternal() {
         if (!shadedReady || shadedSnapshot == null) return;
         RenderSystem.assertOnRenderThread();
+        ensureRawPrograms();
 
-        Matrix4f savedProj = new Matrix4f(RenderSystem.getProjectionMatrix());
-        RenderSystem.setProjectionMatrix(new Matrix4f(), VertexSorting.DISTANCE_TO_ORIGIN);
-        RenderSystem.getModelViewStack().pushPose();
-        RenderSystem.getModelViewStack().setIdentity();
-        RenderSystem.applyModelViewMatrix();
-
-        RenderSystem.disableDepthTest();
+        // Draw with the raw NDC shader (positions already in clip space) instead of a matrix-transformed quad, so
+        // we never touch the global projection/modelview. Hijacking + restoring those subtly disturbed the state
+        // TaC:Z's following super.render relied on. This matches the Iris composite path.
+        //
+        // Stencil: draw only into the carved aperture (bit 0x80 set — same selector as the Iris lens-mask capture),
+        // NOT the whole ocular. This hook runs after TaC:Z's aperture carve, so the ocular rim/mask region is left
+        // untouched — otherwise the snapshot overwrote the scope's own inner ring there and TaC:Z's black mask
+        // showed on top of it (a dark ring around the lens).
+        // Depth-test (LEQUAL) but don't write depth, and force the fragment depth to the far plane via
+        // glDepthRange(1,1). The lens opening is cleared to depth 1.0 in prepareForFrame, so the composite passes
+        // only there — the actual see-through background — and is occluded by ALL of the scope's own model geometry
+        // (which is nearer than 1.0), whatever depth its inner ring/reticle housing sits at. Without this the
+        // snapshot painted over that geometry, carving a see-through hole in the model where the ocular rim sits.
+        int prevProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthFunc(GL11.GL_LEQUAL);
         RenderSystem.depthMask(false);
         RenderSystem.disableBlend();
         RenderSystem.colorMask(true, true, true, true);
+        GL11.glDepthRange(1.0, 1.0);
         GL11.glEnable(GL11.GL_STENCIL_TEST);
-        if (stencilRef > 0) {
-            RenderSystem.stencilFunc(GL11.GL_EQUAL, stencilRef, 0xFF);
-        } else {
-            RenderSystem.stencilFunc(GL11.GL_NOTEQUAL, 0, 0xFF);
-        }
+        RenderSystem.stencilFunc(GL11.GL_EQUAL, 0x80, 0x80);
         RenderSystem.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
 
-        drawNdcQuad(shadedSnapshot.getColorTextureId());
+        GL20.glUseProgram(rawProgramId);
+        GL20.glUniform1i(GL20.glGetUniformLocation(rawProgramId, "tex"), 0);
+        GlStateManager._activeTexture(GL13.GL_TEXTURE0);
+        GlStateManager._bindTexture(shadedSnapshot.getColorTextureId());
+        drawRawQuad();
+        GlStateManager._bindTexture(0);
 
-        RenderSystem.getModelViewStack().popPose();
-        RenderSystem.applyModelViewMatrix();
+        GL11.glDepthRange(0.0, 1.0);
+        GL20.glUseProgram(prevProgram);
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
-        RenderSystem.setProjectionMatrix(savedProj, VertexSorting.DISTANCE_TO_ORIGIN);
         RenderSystem.stencilFunc(GL11.GL_ALWAYS, 0, 0xFF);
         RenderSystem.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
 
@@ -615,7 +640,7 @@ public final class ScopeShaderRenderer {
     }
 
     public static void captureLensMaskIris() {
-        if (!IrisCompat.isShaderPackInUse()) return;
+        if (!useEndOfFramePath()) return;
         if (!ScopeStateTracker.isAimingThroughScope()) return;
         captureLensMaskGpu();
     }
@@ -846,17 +871,5 @@ public final class ScopeShaderRenderer {
         GlStateManager._activeTexture(GL13.GL_TEXTURE0);
         GL20.glUseProgram(0);
         glCheck("Step1b vmInpaint");
-    }
-
-    private static void drawNdcQuad(int textureId) {
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, textureId);
-        BufferBuilder bb = Tesselator.getInstance().getBuilder();
-        bb.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        bb.vertex(-1.0, -1.0, 0.0).uv(0.0f, 0.0f).endVertex();
-        bb.vertex( 1.0, -1.0, 0.0).uv(1.0f, 0.0f).endVertex();
-        bb.vertex( 1.0,  1.0, 0.0).uv(1.0f, 1.0f).endVertex();
-        bb.vertex(-1.0,  1.0, 0.0).uv(0.0f, 1.0f).endVertex();
-        BufferUploader.drawWithShader(bb.end());
     }
 }

@@ -22,7 +22,6 @@ import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.tkg.RenaissanceLib.RenaissanceLibMod;
-import net.tkg.RenaissanceLib.attachment.ScopeRails;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAttachments;
 import net.tkg.RenaissanceLib.network.ClientMessageSetUnderbarrelAttachment;
@@ -33,18 +32,18 @@ import java.util.List;
 
 /**
  * Renders and drives the installed underbarrel's <em>own</em> attachment slots in the refit screen — a muzzle,
- * extended mag, etc. mounted on the sub-gun (see {@link UnderbarrelAttachments}). Laid out exactly like the
- * canted-rail sub-slots ({@link RailRefitOverlay}): a row one step below the gun's native attachment row,
- * anchored at the grip column (where the underbarrel rides) and stacking left. Click an empty slot for a picker
- * of matching inventory attachments; click a filled one to unload. Server-authoritative via
- * {@link ClientMessageSetUnderbarrelAttachment}. Shown only in the refit overview.
+ * extended mag, etc. mounted on the sub-gun (see {@link UnderbarrelAttachments}). Laid out identically to the
+ * canted-rail sub-slots ({@link RailRefitOverlay}) and sharing its layout helpers: a host marker (the
+ * underbarrel) in the right-anchored column with slots stacking left, one row below the gun's native
+ * attachments and any rail host rows (tucked close, and pushed down while a rail slot's panel is showing).
+ * Click an empty slot for a picker of matching inventory attachments; click a filled one to unload.
+ * Server-authoritative via {@link ClientMessageSetUnderbarrelAttachment}. Shown only in the refit overview.
  */
 @Mod.EventBusSubscriber(modid = RenaissanceLibMod.MOD_ID, value = Dist.CLIENT)
 public final class UnderbarrelAttachmentRefitOverlay {
     private static final int SIZE = GunRefitScreen.SLOT_SIZE;
-    private static final int STEP = SIZE;
     private static final int MAX_PICKER = 8;
-    private static final int OUTLINE = 0xFFB0A030; // muted gold — the underbarrel's own attachment slots
+    private static final int MARKER_OUTLINE = 0xFFFFA500; // orange — the host marker, matching the rail rows
     private static final int UNLOAD_SIZE = 8;
     private static final int UNLOAD_DX = 5;
     private static final long INTERACT_COOLDOWN_MS = 250;
@@ -66,30 +65,22 @@ public final class UnderbarrelAttachmentRefitOverlay {
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
     }
 
-    /** The x of the {@code GRIP} native slot (where the underbarrel rides), computed like {@link GunRefitScreen}. */
-    private static int gripColumnX(int screenWidth) {
-        int x = screenWidth - 30;
-        for (AttachmentType type : AttachmentType.values()) {
-            if (type == AttachmentType.NONE) continue;
-            if (type == AttachmentType.GRIP) break;
-            x -= STEP;
-        }
-        return x;
+    /** The shared right-anchored host-marker column — identical to the canted-rail rows ({@link RailRefitOverlay}). */
+    private static int anchorX(int screenWidth) {
+        return RailRefitOverlay.anchorX(screenWidth);
     }
 
-    /** Slot {@code i} sits one row below the native attachments, stacking left from the grip column. */
-    private static int slotX(int gripX, int index) {
-        return gripX - index * STEP;
+    /** Slot {@code i} stacks left of the host marker, exactly like a rail row. */
+    private static int slotX(int anchorX, int index) {
+        return RailRefitOverlay.slotColumnX(anchorX, index);
     }
 
     /**
-     * One row below the native attachments — but pushed down another step when the scope's own rail row
-     * ({@link RailRefitOverlay}) occupies that first row, so the two never overlap on a gun that has both.
+     * The underbarrel's own attachment row sits just below the gun's native attachments and any rail host rows
+     * — close by default, and pushed down while a rail slot is being handled (its panel is showing).
      */
-    private static int rowY(ItemStack gunItem) {
-        int row = 10 + STEP;
-        if (!ScopeRails.getRailSlots(gunItem).isEmpty()) row += STEP;
-        return row;
+    private static int rowY(LocalPlayer player, ItemStack gunItem) {
+        return RailRefitOverlay.subRowBottomY(player, gunItem);
     }
 
     /** The underbarrel's allowed attachment types, or empty if no underbarrel installed. */
@@ -120,18 +111,23 @@ public final class UnderbarrelAttachmentRefitOverlay {
         Font font = Minecraft.getInstance().font;
         int mouseX = event.getMouseX();
         int mouseY = event.getMouseY();
-        int gripX = gripColumnX(screen.width);
-        int rowY = rowY(gunItem);
+        int anchorX = anchorX(screen.width);
+        int rowY = rowY(player, gunItem);
+
+        // Host marker: the underbarrel itself, at the anchor column — the same place a rail row shows its host.
+        drawSlot(graphics, anchorX, rowY, false);
+        ItemStack ub = Underbarrel.getInstalledUnderbarrel(gunItem);
+        if (!ub.isEmpty()) graphics.renderItem(ub, anchorX + 1, rowY + 1);
+        graphics.renderOutline(anchorX, rowY, SIZE, SIZE, MARKER_OUTLINE);
 
         for (int i = 0; i < types.size(); i++) {
-            int x = slotX(gripX, i);
+            int x = slotX(anchorX, i);
             boolean hovered = inRect(mouseX, mouseY, x, rowY, SIZE, SIZE);
             drawSlot(graphics, x, rowY, selectedSlot == i || hovered);
             ItemStack installed = UnderbarrelAttachments.getInstalled(gunItem, types.get(i));
             if (!installed.isEmpty()) {
                 graphics.renderItem(installed, x + 1, rowY + 1);
             }
-            graphics.renderOutline(x, rowY, SIZE, SIZE, OUTLINE);
             if (hovered) {
                 int nameY = (selectedSlot == i && !installed.isEmpty()) ? rowY + 30 : rowY + 20;
                 graphics.drawCenteredString(font, typeLabel(types.get(i)), x + SIZE / 2, nameY, 0xFFFFFF);
@@ -139,7 +135,7 @@ public final class UnderbarrelAttachmentRefitOverlay {
         }
 
         if (selectedSlot >= 0 && selectedSlot < types.size()) {
-            int selX = slotX(gripX, selectedSlot);
+            int selX = slotX(anchorX, selectedSlot);
             ItemStack installed = UnderbarrelAttachments.getInstalled(gunItem, types.get(selectedSlot));
             if (!installed.isEmpty()) {
                 int ux = selX + UNLOAD_DX;
@@ -156,14 +152,14 @@ public final class UnderbarrelAttachmentRefitOverlay {
             }
         }
 
-        renderHoverTooltip(graphics, font, player, gunItem, types, mouseX, mouseY, gripX, rowY);
+        renderHoverTooltip(graphics, font, player, gunItem, types, mouseX, mouseY, anchorX, rowY);
     }
 
     private static void renderHoverTooltip(GuiGraphics graphics, Font font, LocalPlayer player, ItemStack gunItem,
-                                           List<AttachmentType> types, int mouseX, int mouseY, int gripX, int rowY) {
+                                           List<AttachmentType> types, int mouseX, int mouseY, int anchorX, int rowY) {
         if (selectedSlot >= 0 && selectedSlot < types.size()
                 && UnderbarrelAttachments.getInstalled(gunItem, types.get(selectedSlot)).isEmpty()) {
-            int selX = slotX(gripX, selectedSlot);
+            int selX = slotX(anchorX, selectedSlot);
             int listY = rowY + 2 * SIZE;
             List<Integer> picks = collectInventory(player, types.get(selectedSlot));
             for (int j = 0; j < picks.size(); j++) {
@@ -174,11 +170,16 @@ public final class UnderbarrelAttachmentRefitOverlay {
             }
         }
         for (int i = 0; i < types.size(); i++) {
-            if (inRect(mouseX, mouseY, slotX(gripX, i), rowY, SIZE, SIZE)) {
+            if (inRect(mouseX, mouseY, slotX(anchorX, i), rowY, SIZE, SIZE)) {
                 ItemStack installed = UnderbarrelAttachments.getInstalled(gunItem, types.get(i));
                 if (!installed.isEmpty()) graphics.renderTooltip(font, installed, mouseX, mouseY);
                 return;
             }
+        }
+        // Host marker → the underbarrel itself.
+        if (inRect(mouseX, mouseY, anchorX, rowY, SIZE, SIZE)) {
+            ItemStack ub = Underbarrel.getInstalledUnderbarrel(gunItem);
+            if (!ub.isEmpty()) graphics.renderTooltip(font, ub, mouseX, mouseY);
         }
     }
 
@@ -204,11 +205,11 @@ public final class UnderbarrelAttachmentRefitOverlay {
         List<AttachmentType> types = slots(gunItem);
         double mouseX = event.getMouseX();
         double mouseY = event.getMouseY();
-        int gripX = gripColumnX(screen.width);
-        int rowY = rowY(gunItem);
+        int anchorX = anchorX(screen.width);
+        int rowY = rowY(player, gunItem);
 
         if (selectedSlot >= 0 && selectedSlot < types.size()) {
-            int selX = slotX(gripX, selectedSlot);
+            int selX = slotX(anchorX, selectedSlot);
             AttachmentType type = types.get(selectedSlot);
             ItemStack installed = UnderbarrelAttachments.getInstalled(gunItem, type);
             if (!installed.isEmpty()
@@ -242,7 +243,7 @@ public final class UnderbarrelAttachmentRefitOverlay {
         }
 
         for (int i = 0; i < types.size(); i++) {
-            if (inRect(mouseX, mouseY, slotX(gripX, i), rowY, SIZE, SIZE)) {
+            if (inRect(mouseX, mouseY, slotX(anchorX, i), rowY, SIZE, SIZE)) {
                 playClickSound();
                 if (!onCooldown()) {
                     markInteract();

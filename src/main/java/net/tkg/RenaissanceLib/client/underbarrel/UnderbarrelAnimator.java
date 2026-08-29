@@ -37,6 +37,11 @@ import java.util.Map;
 @OnlyIn(Dist.CLIENT)
 public final class UnderbarrelAnimator {
     private static final String IDLE = "idle";
+    /** Idle clip candidates, in preference order — TaC:Z gun convention ({@code static_idle}) first. */
+    private static final String[] IDLE_CANDIDATES = {"static_idle", "idle"};
+    /** Magazine-reload clip candidates by state — gun convention first, then our simple {@code reload}. */
+    private static final String[] RELOAD_TACTICAL_CANDIDATES = {"reload_tactical", "reload_normal", "reload"};
+    private static final String[] RELOAD_EMPTY_CANDIDATES = {"reload_empty", "reload"};
     private static final String RELOAD = "reload";
     private static final String RELOAD_INTRO = "reload_intro";
     private static final String RELOAD_INTRO_EMPTY = "reload_intro_empty";
@@ -65,6 +70,31 @@ public final class UnderbarrelAnimator {
         shellReload = false;
     }
 
+    /** The idle animation, resolving the gun-convention name ({@code static_idle}) then our {@code idle} fallback. */
+    private static BedrockAnimation idleAnim(ResourceLocation animFile) {
+        return firstAnim(animFile, IDLE_CANDIDATES);
+    }
+
+    /** The first of {@code names} that exists in {@code animFile}, or {@code null}. */
+    private static BedrockAnimation firstAnim(ResourceLocation animFile, String... names) {
+        if (animFile == null) return null;
+        for (String n : names) {
+            BedrockAnimation a = UnderbarrelAnimations.get(animFile, n);
+            if (a != null) return a;
+        }
+        return null;
+    }
+
+    /** The first of {@code names} that exists in {@code animFile}, else the last one (as a fallback clip name). */
+    private static String firstName(ResourceLocation animFile, String... names) {
+        if (animFile != null) {
+            for (String n : names) {
+                if (UnderbarrelAnimations.get(animFile, n) != null) return n;
+            }
+        }
+        return names[names.length - 1];
+    }
+
     /**
      * Trigger the reload animation: a shell-by-shell sequence for a manual-feed underbarrel that has the
      * shotgun reload clips, otherwise a single {@code reload} clip. {@code gun}/{@code underbarrel} identify the
@@ -76,15 +106,18 @@ public final class UnderbarrelAnimator {
         boolean manual = ubData != null && ubData.getReloadData() != null
                 && ubData.getReloadData().getType() == FeedType.MANUAL;
 
+        int current = gun != null ? UnderbarrelAmmo.get(gun, ubData) : 0;
+        boolean empty = current <= 0;
+
         if (animFile != null && manual) {
-            int current = gun != null ? UnderbarrelAmmo.get(gun, ubData) : 0;
-            boolean empty = current <= 0;
             double durationSec = Math.max(0, UnderbarrelAmmo.reloadDurationTicks(gun, ubData, current)) / 20.0;
             if (beginShellReload(animFile, empty, durationSec)) {
                 return;
             }
         }
-        trigger(RELOAD);
+        // Magazine reload: prefer the gun-convention clip for the state (reload_empty / reload_tactical),
+        // falling back to our simple `reload`.
+        trigger(firstName(animFile, empty ? RELOAD_EMPTY_CANDIDATES : RELOAD_TACTICAL_CANDIDATES));
     }
 
     /**
@@ -129,22 +162,24 @@ public final class UnderbarrelAnimator {
             return;
         }
 
-        BedrockAnimation anim = UnderbarrelAnimations.get(animationFile, currentAnim);
+        BedrockAnimation anim = IDLE.equals(currentAnim)
+                ? idleAnim(animationFile)
+                : UnderbarrelAnimations.get(animationFile, currentAnim);
         // A finished one-shot falls back to the looping idle.
         if (anim != null && !anim.isLoop() && elapsed >= anim.getAnimationLength()) {
             currentAnim = IDLE;
             startMs = now;
             elapsed = 0.0;
-            anim = UnderbarrelAnimations.get(animationFile, IDLE);
+            anim = idleAnim(animationFile);
         }
         if (anim == null && !IDLE.equals(currentAnim)) {
-            anim = UnderbarrelAnimations.get(animationFile, IDLE);
+            anim = idleAnim(animationFile);
         }
         if (anim == null) return;
 
         double length = anim.getAnimationLength();
         double time = (anim.isLoop() && length > 0) ? elapsed % length : Math.min(elapsed, length);
-        poseModel(model, anim, time);
+        poseModel(model, animationFile, anim, time);
     }
 
     /** Plays intro → shell loop (repeated to fill) → end, then hands back to idle. */
@@ -154,9 +189,9 @@ public final class UnderbarrelAnimator {
             shellReload = false;
             currentAnim = IDLE;
             startMs = now;
-            BedrockAnimation idle = UnderbarrelAnimations.get(animFile, IDLE);
+            BedrockAnimation idle = idleAnim(animFile);
             if (idle != null) {
-                poseModel(model, idle, 0.0);
+                poseModel(model, animFile, idle, 0.0);
             }
             return;
         }
@@ -178,58 +213,80 @@ public final class UnderbarrelAnimator {
 
         BedrockAnimation anim = UnderbarrelAnimations.get(animFile, clip);
         if (anim == null) return;
-        poseModel(model, anim, Math.min(time, anim.getAnimationLength()));
+        poseModel(model, animFile, anim, Math.min(time, anim.getAnimationLength()));
     }
 
-    /** Reset the model to rest, write one clip's sampled pose onto it, and publish the whole-weapon (root) delta. */
-    private static void poseModel(BedrockAttachmentModel model, BedrockAnimation anim, double time) {
+    /**
+     * Reset the model to rest, lay down the <em>idle</em> pose as a base so bones the active clip doesn't
+     * animate keep idling (the "transfer hand position from idle" behaviour TaC:Z guns have), overlay the
+     * active clip on top, and publish the whole-weapon (root) delta. The idle base never drives the root —
+     * only the active clip does — so a shoot/reload swings the weapon while the off hand keeps its idle pose.
+     */
+    private static void poseModel(BedrockAttachmentModel model, ResourceLocation animFile,
+                                  BedrockAnimation anim, double time) {
         resetToRest(model);
-        Vector3f rootPos = null;
-        Vector3f rootRot = null;
+
+        BedrockAnimation base = idleAnim(animFile);
+        if (base != null && base != anim) {
+            double baseLen = base.getAnimationLength();
+            // Sample idle on a continuous clock so it keeps looping smoothly under the active clip.
+            double baseTime = baseLen > 0 ? (System.currentTimeMillis() / 1000.0) % baseLen : 0.0;
+            applyBones(model, base, baseTime, null); // base pose only — don't capture/publish idle's root
+        }
+
+        Vector3f[] root = new Vector3f[2];
+        applyBones(model, anim, time, root);
+        publishWeaponDelta(root[0], root[1]);
+    }
+
+    /**
+     * Writes one clip's sampled pose onto the model's bones. If {@code rootOut} is non-null, the {@code root}
+     * (whole-gun) bone's sampled pos/rot are captured into {@code rootOut[0]}/{@code [1]} instead of the model
+     * (it drives the weapon anchor, not the underbarrel model — applying it would swing the UB off its mount).
+     */
+    private static void applyBones(BedrockAttachmentModel model, BedrockAnimation anim, double time,
+                                   Vector3f[] rootOut) {
         Map<String, AnimationBone> bones = anim.getBones();
-        if (bones != null) {
-            for (Map.Entry<String, AnimationBone> entry : bones.entrySet()) {
-                AnimationBone channel = entry.getValue();
+        if (bones == null) return;
+        for (Map.Entry<String, AnimationBone> entry : bones.entrySet()) {
+            AnimationBone channel = entry.getValue();
 
-                // The root (whole-gun) bone's animation drives the WHOLE weapon through the anchor, not the
-                // underbarrel model — applying it to the model would swing the underbarrel off its mount ("off
-                // the rail"). Capture it for the anchor and skip the model.
-                if (ROOT_NODE.equals(entry.getKey())) {
-                    rootPos = UnderbarrelAnimations.sample(channel.getPosition(), time);
-                    rootRot = UnderbarrelAnimations.sample(channel.getRotation(), time);
-                    continue;
+            if (ROOT_NODE.equals(entry.getKey())) {
+                if (rootOut != null) {
+                    rootOut[0] = UnderbarrelAnimations.sample(channel.getPosition(), time);
+                    rootOut[1] = UnderbarrelAnimations.sample(channel.getRotation(), time);
                 }
+                continue;
+            }
 
-                BedrockPart bone = model.getNode(entry.getKey());
-                if (bone == null) continue;
+            BedrockPart bone = model.getNode(entry.getKey());
+            if (bone == null) continue;
 
-                Vector3f pos = UnderbarrelAnimations.sample(channel.getPosition(), time);
-                if (pos != null) {
-                    // Animation position is authored in Blockbench pixels; the bone offset is in blocks.
-                    // Y is negated to match TaC:Z's ModelTranslateListener (bedrock part space inverts Y).
-                    bone.offsetX = pos.x() / 16f;
-                    bone.offsetY = -pos.y() / 16f;
-                    bone.offsetZ = pos.z() / 16f;
-                }
-                Vector3f rot = UnderbarrelAnimations.sample(channel.getRotation(), time);
-                if (rot != null) {
-                    // Rest rotation stays on the Euler fields; the animation rotation is a separate quaternion
-                    // applied after it (matches TaC:Z's additionalQuaternion), correct even with a non-zero rest.
-                    MathUtil.toQuaternion(
-                            (float) Math.toRadians(rot.x()),
-                            (float) Math.toRadians(rot.y()),
-                            (float) Math.toRadians(rot.z()),
-                            bone.additionalQuaternion);
-                }
-                Vector3f scale = UnderbarrelAnimations.sample(channel.getScale(), time);
-                if (scale != null) {
-                    bone.xScale = scale.x();
-                    bone.yScale = scale.y();
-                    bone.zScale = scale.z();
-                }
+            Vector3f pos = UnderbarrelAnimations.sample(channel.getPosition(), time);
+            if (pos != null) {
+                // Animation position is authored in Blockbench pixels; the bone offset is in blocks.
+                // Y is negated to match TaC:Z's ModelTranslateListener (bedrock part space inverts Y).
+                bone.offsetX = pos.x() / 16f;
+                bone.offsetY = -pos.y() / 16f;
+                bone.offsetZ = pos.z() / 16f;
+            }
+            Vector3f rot = UnderbarrelAnimations.sample(channel.getRotation(), time);
+            if (rot != null) {
+                // Rest rotation stays on the Euler fields; the animation rotation is a separate quaternion
+                // applied after it (matches TaC:Z's additionalQuaternion), correct even with a non-zero rest.
+                MathUtil.toQuaternion(
+                        (float) Math.toRadians(rot.x()),
+                        (float) Math.toRadians(rot.y()),
+                        (float) Math.toRadians(rot.z()),
+                        bone.additionalQuaternion);
+            }
+            Vector3f scale = UnderbarrelAnimations.sample(channel.getScale(), time);
+            if (scale != null) {
+                bone.xScale = scale.x();
+                bone.yScale = scale.y();
+                bone.zScale = scale.z();
             }
         }
-        publishWeaponDelta(rootPos, rootRot);
     }
 
     /**

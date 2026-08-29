@@ -10,7 +10,7 @@ driven from the pack files you already write — no new file types.
 | **[Scope Shaders](SCOPE_SHADERS.md)** | Post-processing effects rendered only inside a scope's glass — night vision, colour grading, pixelation | `display/attachments/<scope>_display.json` |
 | **[Toggleable Attachments](TOGGLEABLE_ATTACHMENTS.md)** | Attachments with states the player toggles in-game — folding bipods, flip-aside magnifiers — with their own animations and stat changes | `data/attachments/<name>_data.json` |
 | **[Fire-Mode Attachments](FIRE_MODE_ATTACHMENTS.md)** | Attachments that change which fire modes a gun offers | `data/attachments/<name>_data.json` |
-| **[Underbarrel Guns](UNDERBARREL_GUNS.md)** | A grip attachment that's a working secondary weapon — underbarrel launcher/shotgun with its own ammo, fire modes, reload and animations, switched with a key | `data/attachments/<name>_data.json` + `display/attachments/<name>_display.json` |
+| **[Underbarrel Guns](UNDERBARREL_GUNS.md)** | A grip attachment that's a working secondary weapon — underbarrel launcher/shotgun with its own ammo, fire modes, reload and animations, switched with a key or the fire-mode radial. Optional own iron sights (ADS) and an `item_link` so owning the standalone gun lets you mount it | `data/attachments/<name>_data.json` + `display/attachments/<name>_display.json` + the underbarrel's `index` file |
 | **[Combination Scope Modeling](COMBINATION_SCOPE_MODELING.md)** | Model a sight + magnifier so the sight is 1× see-through and the magnifier is a magnified porthole | model groups + display JSON |
 | **[Conversion Kits](CONVERSION_KITS.md)** | An attachment that swaps the whole weapon into a different gun you already ship — caliber/platform conversions, restricted variants — locking attachments via the converted gun's own rules | `data/attachments/<name>_data.json` + the base gun's `allow_attachments` |
 | **[Fire-Reaction Animations](FIRE_REACTION_ANIMATIONS.md)** | An attachment plays its own animation when the host gun fires — a reciprocating charging handle, an ejection-port cover, suppressor baffles | `data/attachments/<name>_data.json` |
@@ -53,9 +53,11 @@ mounts the attachment, so it has to be authored per gun. See
 
 **Fire-select is now tap-or-hold, on every gun.** A quick tap of the fire-select key cycles fire
 modes exactly like vanilla TaC:Z; holding it (~¼ second) opens a **fire-mode radial** to pick a mode
-directly — point and release. It lists the gun's modes (plus binary when offered), and follows the
-active weapon, so it also drives an [underbarrel's](UNDERBARREL_GUNS.md) modes when one is selected.
-Nothing to configure — it works from the gun's existing `fire_mode` list.
+directly — point and release. It lists the gun's modes (plus binary when offered). When an
+[underbarrel](UNDERBARREL_GUNS.md) is installed the radial shows **both** weapons' modes at once (the
+underbarrel's tinted amber) and doubles as a weapon selector — picking an underbarrel mode switches to
+the underbarrel, picking a host mode switches back. Nothing to configure — it works from the gun's
+existing `fire_mode` list.
 
 ## Checking it's loaded
 

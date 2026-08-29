@@ -69,6 +69,9 @@ public class ShaderManager {
     }
 
     public static boolean isShaderActive() {
+        // Single gate every scope-shader render hook checks. Works under the Accelerated Rendering mod too: the
+        // composite hooks TaC:Z's own {@code renderOcularAndDivision}, which AR still invokes (acceleration briefly
+        // off) from inside its deferred scope render, so the mid-frame composite lands there as well.
         return activeShader != null;
     }
 

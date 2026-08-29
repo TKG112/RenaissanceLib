@@ -80,6 +80,7 @@ looks for:
 | `lefthand_pos` | Recommended | Support-hand locator. The addon draws the **vanilla player arm** here (your host gun keeps its right hand). Model a placeholder arm cube to position it — the cube is hidden in-game and the real arm is drawn at the bone. |
 | `muzzle_flash_underbarrel` | Optional | Where the muzzle flash draws (only if `muzzle_flash` is set in the display). A grenade launcher usually omits it. |
 | `shell` | Optional | Shell-ejection origin, for underbarrels whose ammo has a shell model (e.g. a 12-gauge masterkey). No effect for shell-less ammo like 40 mm. |
+| `iron_view` | Optional | The aim node for the underbarrel's **own iron sights** (§10). Add it (and set `iron_zoom`) to give the underbarrel its own ADS; omit it and aiming keeps using the host gun's sights. Same bone TaC:Z uses for a gun's iron sight. |
 
 > **`lefthand_pos` is placed for the vanilla arm, not your cube.** The arm's origin differs from
 > a placeholder cube, so position the bone by checking the real arm **in-game**, the same way
@@ -93,9 +94,14 @@ The underbarrel plays its own animations from the `animation` file in `underbarr
 
 | Clip | When |
 |---|---|
-| `idle` | Loops while the underbarrel is the active weapon |
+| `static_idle` (or `idle`) | Loops while the underbarrel is the active weapon |
 | `shoot` | Once per shot |
-| `reload` | Once per reload (magazine-style) |
+| `reload_tactical` / `reload_empty` (or `reload`) | Once per reload (magazine-style) — `reload_empty` plays when reloading from empty, `reload_tactical` otherwise |
+| `inspect` | Once when the inspect key is pressed while the underbarrel is active |
+
+> Clip names follow TaC:Z's **gun** convention, so you can name the underbarrel's animations exactly like a
+> gun's: `static_idle`, `reload_tactical`, `reload_empty`, `shoot`. The older simple names (`idle`, `reload`)
+> still work as fallbacks if a gun-convention clip isn't present.
 
 ### Shell-by-shell (shotgun) reloads
 
@@ -124,10 +130,14 @@ Everything routes to whichever weapon is **active** (host gun vs underbarrel):
 
 | Action | Key | Behaviour |
 |---|---|---|
-| Switch weapon | Switch-weapon key (bind in `Options → Controls → RenaissanceLib`) | **Toggles** between the main gun and the underbarrel. Since a gun has at most one underbarrel there's no menu — each press just flips. |
+| Switch weapon | Switch-weapon key (bind in `Options → Controls → RenaissanceLib`) | **Toggles** between the main gun and the underbarrel. Since a gun has at most one underbarrel there's no menu — each press just flips. You can **also** switch straight from the fire-mode radial (below). |
 | Fire | Normal shoot key | Fires the active weapon |
 | Reload | Normal reload key | Reloads the active weapon (host reload is cancelled while the underbarrel is active) |
-| Fire select | Normal fire-select key | **Tap** cycles the active weapon's own fire modes; **hold** (~¼ s) opens a fire-mode radial to pick one directly (see §5) |
+| Fire select | Normal fire-select key | **Tap** cycles the active weapon's own fire modes; **hold** (~¼ s) opens the fire-mode radial, which lists **both** weapons' modes and doubles as a weapon selector (see §5) |
+| Inspect | Normal inspect key | While the underbarrel is active, hands control back to the **host gun**, plays the host's own inspect in full, then re-arms the underbarrel when it finishes — so the support arm animates properly (the underbarrel's rig owns that arm otherwise). With the host already active it inspects normally. |
+
+> **Reload has no post-reload cooldown.** The underbarrel can fire the instant loading finishes — its reload
+> lockout is the `feed` time only, not `feed + cooldown` (put any extra delay in the feed time itself).
 
 The underbarrel keeps its **own** selected fire mode and **own** ammo count, both stored on the
 gun and synced — they don't touch the host gun's.
@@ -142,9 +152,15 @@ exactly like the host gun: add `"binary"` to the underbarrel's `fire_mode` array
 When present, binary is added to the underbarrel's cycle and fires one shot on trigger **press** and one on
 **release**.
 
-**Fire-mode radial.** Holding the fire-select key (~¼ second) opens a radial listing the active weapon's
-modes — the underbarrel's here (or the host gun's, including its binary, when it's active). Point and
-release to pick a mode directly; a quick tap still just cycles. This works on any gun, not only underbarrels.
+**Fire-mode radial.** Holding the fire-select key (~¼ second) opens a radial; point and release to pick a mode
+directly (a quick tap still just cycles). This works on any gun, not only underbarrels.
+
+When a gun has an underbarrel installed, the radial shows **both** weapons' modes in one ring — the host gun's
+(including its binary) and the underbarrel's — so it doubles as a **weapon selector**. The underbarrel's
+segments are tinted a distinct amber, and the header names the weapon the highlighted segment belongs to
+(`Main Gun` / `Underbarrel`). Picking a host segment switches to the host and sets that mode; picking an
+underbarrel segment switches to (and arms) the underbarrel and sets that mode. So one gesture both selects the
+weapon and its fire mode.
 
 ---
 
@@ -230,11 +246,77 @@ Since the underbarrel doesn't aim down sights, the full (non-aiming) recoil fact
 
 ---
 
-## 9. Troubleshooting
+## 9. Unlocking via a linked gun (`item_link`)
+
+An underbarrel can be made installable by **owning the standalone gun it represents**, instead of a
+separate attachment item. Declare an `item_link` in the underbarrel's **index** file
+(`data/<ns>/index/attachments/<name>.json`):
+
+```json
+{
+  "name": "...",
+  "display": "<ns>:my_gl_display",
+  "data": "<ns>:my_gl_data",
+  "type": "grip",
+  "item_link": "tacz:modern_kinetic_gun{GunId:\"tacz:m320\"}"
+}
+```
+
+The value is an item id with optional SNBT. For a TaC:Z gun the item is always
+`tacz:modern_kinetic_gun`, so the **`GunId`** tag is what actually identifies which gun unlocks it.
+
+**How it behaves (round-trip):**
+
+- While you hold the linked gun anywhere in your inventory, the underbarrel appears as an installable
+  candidate in the host gun's **grip** slot in the gun-smith refit screen — its inventory button shows
+  the linked gun.
+- **Installing consumes one** of the linked gun and mounts the underbarrel. The consumed gun is
+  remembered on the attachment.
+- **Uninstalling gives the linked gun back** (not an attachment item) — so mounting/unmounting never
+  loses your weapon. An underbarrel installed the normal way (as an attachment item) is unaffected and
+  returns its attachment item as usual.
+
+`item_link` is additive: it only *adds* the ownership path. The underbarrel still installs normally
+from its own attachment item if the pack provides one, and the host gun must still allow the grip via
+its `allow_attachments` tags.
+
+---
+
+## 10. Iron sights (ADS)
+
+The underbarrel can have its **own** aim-down-sights — **optional**. If you don't set it up, aiming while the
+underbarrel is up simply keeps the host gun's aim, exactly as before.
+
+To enable it:
+
+1. Add an **`iron_view`** locator bone to the underbarrel model, positioned/oriented so the camera looks
+   straight down the underbarrel's sights (the same bone TaC:Z uses for a gun's iron sight). Its presence is
+   the opt-in — no `iron_view`, no underbarrel ADS.
+2. Set **`iron_zoom`** in the `underbarrel_display` (the aim magnification, e.g. `1.33` for a slight zoom).
+
+```json
+"underbarrel_display": {
+  "iron_zoom": 1.33
+}
+```
+
+When the underbarrel is the active weapon and you aim, the camera aligns to `iron_view` and the world zooms to
+`iron_zoom`. The gun-model FOV (`zoom_model_fov`) stays the host's — iron sights don't need it.
+
+> **`iron_view` is placed for the camera, not a cube — tune it in-game.** Like `lefthand_pos`, its exact
+> position/rotation is best dialed in by aiming in-game, since it sets where the camera sits relative to the
+> sights.
+
+---
+
+## 11. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
 | Underbarrel doesn't appear / can't install | It must be a **grip**-slot attachment, allowed on the gun via `allow_attachments` tags |
+| `item_link` gun doesn't show in the refit picker | Wrong `GunId` in `item_link`, the gun isn't in your inventory, or the host gun's grip slot doesn't allow the underbarrel |
+| Aiming the underbarrel still uses the host sights | No `iron_view` node in the underbarrel model — that node is the ADS opt-in (§10) |
+| Underbarrel ADS aims at the wrong spot | Reposition/rotate the `iron_view` node in-game (§10) |
 | Installs but does nothing when selected | `underbarrel_data` missing or malformed — the addon only treats a grip as an underbarrel when that block parses |
 | Model shows but no animation / effects | `underbarrel_display` didn't parse — check the `animation`/`model` paths inside that block |
 | Support arm off-screen or wrong spot | Reposition/rotate `lefthand_pos` for the **vanilla arm**, checked in-game (§2) |

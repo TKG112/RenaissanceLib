@@ -148,6 +148,9 @@ crisp reticle rather than a smeared duplicate beside it. Nothing to configure.
 **Shaderpacks.** Works under Iris/Oculus as well as vanilla. Expect a modest frame cost
 while scoped under a shaderpack.
 
+**Accelerated Rendering mod.** Supported, with nothing to configure — the effect is composited at the end of the
+frame (after the scope is fully drawn), so it works the same whether or not Accelerated Rendering is installed.
+
 ---
 
 ## 6. Scopes with multiple views (canted sights, variable zoom)

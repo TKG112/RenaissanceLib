@@ -18,6 +18,7 @@ import net.tkg.RenaissanceLib.attachment.AttachmentOverrides;
 import net.tkg.RenaissanceLib.attachment.BinaryFireMode;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelFireMode;
+import net.tkg.RenaissanceLib.network.ClientMessageSetActiveWeapon;
 import net.tkg.RenaissanceLib.network.ClientMessageSetFireMode;
 import net.tkg.RenaissanceLib.network.ClientMessageSetUnderbarrelFireMode;
 import net.tkg.RenaissanceLib.network.NetworkHandler;
@@ -92,7 +93,12 @@ public final class FireModeWheel {
         STATE.close();
     }
 
-    /** Open for the active weapon on the held gun. Returns {@code false} unless there are 2+ modes to choose. */
+    /**
+     * Open the wheel for the held gun. Lists the host gun's fire modes and — when an underbarrel is installed —
+     * the underbarrel's modes in the same ring, so the wheel doubles as a weapon selector: picking an
+     * underbarrel segment switches to (and arms) the underbarrel, picking a host segment switches back.
+     * Returns {@code false} unless there are 2+ choices.
+     */
     public static boolean tryOpen() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
@@ -102,9 +108,10 @@ public final class FireModeWheel {
         IGun iGun = IGun.getIGunOrNull(gun);
         if (iGun == null) return false;
 
-        List<Choice> choices = ActiveWeapon.isUnderbarrelActive(gun)
-                ? underbarrelChoices(gun)
-                : hostChoices(gun, iGun);
+        List<Choice> choices = new ArrayList<>(hostChoices(gun, iGun));
+        if (Underbarrel.hasUnderbarrel(gun)) {
+            choices.addAll(underbarrelChoices(gun));
+        }
         if (choices.size() < 2) return false; // nothing worth a radial
 
         return STATE.open(choices, player.getInventory().selected);
@@ -155,9 +162,19 @@ public final class FireModeWheel {
         if (choice.ubIndex() >= 0) {
             GunData ubData = Underbarrel.getUnderbarrelData(Underbarrel.getInstalledUnderbarrel(gun));
             if (ubData == null) return;
+            // Arm the underbarrel first (if it isn't already), so picking one of its modes also switches to it.
+            if (!ActiveWeapon.isUnderbarrelActive(gun)) {
+                ActiveWeapon.set(gun, ActiveWeapon.UNDERBARREL); // client prediction; server re-validates
+                NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetActiveWeapon(ActiveWeapon.UNDERBARREL));
+            }
             UnderbarrelFireMode.setIndex(gun, ubData, choice.ubIndex()); // client prediction
             NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetUnderbarrelFireMode(choice.ubIndex()));
         } else {
+            // Switch back to the host gun (if the underbarrel was active) and set the chosen host mode.
+            if (ActiveWeapon.isUnderbarrelActive(gun)) {
+                ActiveWeapon.set(gun, ActiveWeapon.MAIN); // client prediction; server re-validates
+                NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetActiveWeapon(ActiveWeapon.MAIN));
+            }
             iGun.setFireMode(gun, choice.mode()); // client prediction
             BinaryFireMode.setActive(gun, choice.binary());
             NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetFireMode(choice.mode(), choice.binary()));

@@ -3,6 +3,7 @@ package net.tkg.RenaissanceLib.mixin.client;
 import com.tacz.guns.api.item.IAmmo;
 import com.tacz.guns.api.item.IAmmoBox;
 import com.tacz.guns.api.item.IGun;
+import com.tacz.guns.api.item.gun.FireMode;
 import com.tacz.guns.client.gui.overlay.GunHudOverlay;
 import com.tacz.guns.client.resource.GunDisplayInstance;
 import com.tacz.guns.client.resource.pojo.display.gun.GunDisplay;
@@ -17,6 +18,7 @@ import net.tkg.RenaissanceLib.attachment.BinaryFireMode;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAmmo;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelFireMode;
+import net.tkg.RenaissanceLib.client.FireModeWheel;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelClient;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
@@ -56,12 +58,15 @@ public class GunHudOverlayMixin {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return original;
         ItemStack held = player.getMainHandItem();
-        // While the underbarrel is active, its own binary selection drives the icon; otherwise the host gun's.
         GunData ub = renaissance$activeUnderbarrel(held);
-        boolean binary = ub != null
-                ? UnderbarrelFireMode.isBinary(held, ub)
-                : BinaryFireMode.isActive(held);
-        return binary ? BINARY_TEXTURE : original;
+        if (ub != null) {
+            // The underbarrel drives the icon: its binary selection, else its OWN fire mode. Otherwise the host
+            // gun's mode icon (the `original` TaC:Z chose) would wrongly stay showing while the UB is active.
+            if (UnderbarrelFireMode.isBinary(held, ub)) return BINARY_TEXTURE;
+            FireMode mode = UnderbarrelFireMode.get(held, ub);
+            return mode != null ? FireModeWheel.iconFor(mode) : original;
+        }
+        return BinaryFireMode.isActive(held) ? BINARY_TEXTURE : original;
     }
 
     // ---- underbarrel HUD gun image ----------------------------------------------------------------------

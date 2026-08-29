@@ -69,13 +69,17 @@ public final class UnderbarrelAmmo {
         gunItem.getOrCreateTag().putInt(KEY_AMMO, Math.max(0, rounds));
     }
 
-    /** Total reload duration in ticks: feed + cooldown "empty" times (seconds → ticks). */
+    /**
+     * Total reload duration in ticks: the feed ("empty") time only. TaC:Z's post-reload {@code cooldown}
+     * is deliberately excluded so the underbarrel can fire the instant loading finishes — otherwise the
+     * magazine refills at reload start (HUD looks done) but firing stays locked through the cooldown, which
+     * reads as an unexpected gap. Authors who want a post-reload delay put it in the feed time.
+     */
     public static int reloadDurationTicks(GunData ubData) {
         GunReloadData reload = ubData.getReloadData();
         float seconds = 0f;
-        if (reload != null) {
-            if (reload.getFeed() != null) seconds += reload.getFeed().getEmptyTime();
-            if (reload.getCooldown() != null) seconds += reload.getCooldown().getEmptyTime();
+        if (reload != null && reload.getFeed() != null) {
+            seconds = reload.getFeed().getEmptyTime();
         }
         if (seconds <= 0f) seconds = 1.0f;
         return Math.max(1, Math.round(seconds * 20f));
@@ -99,8 +103,8 @@ public final class UnderbarrelAmmo {
         int capacity = gunItem != null ? maxAmmo(gunItem, ubData) : maxAmmo(ubData);
         int shells = Math.max(1, capacity - Math.max(0, currentAmmo));
         float perShell = reload.getFeed() != null ? reload.getFeed().getEmptyTime() : 0.5f;
-        float cooldown = reload.getCooldown() != null ? reload.getCooldown().getEmptyTime() : 0f;
-        float seconds = Math.max(0.1f, perShell * shells + cooldown);
+        // Feed (per-shell) time only — no post-reload cooldown, matching the magazine path above.
+        float seconds = Math.max(0.1f, perShell * shells);
         return Math.max(1, Math.round(seconds * 20f));
     }
 

@@ -8,7 +8,9 @@ import com.tacz.guns.client.model.BedrockGunModel;
 import com.tacz.guns.client.model.IFunctionalRenderer;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
+import com.tacz.guns.compat.ar.ARCompat;
 import com.tacz.guns.util.RenderHelper;
+import org.lwjgl.opengl.GL11;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderType;
@@ -117,6 +119,47 @@ public abstract class BedrockGunModelMixin {
         if (!RailAim.masksOptic(index)) return;
         RenderHelper.enableItemEntityStencilTest();
         RenderSystem.stencilFunc(RailAim.maskFunc(index), RailAim.maskRef(index), 0xFF);
+    }
+
+    /**
+     * Accelerated-Rendering counterpart of {@link #renaissance$maskGunInRailScope}. Under the
+     * {@code acceleratedrendering} mod, TaC:Z draws the gun body deferred on AR layer -940 with a before-runnable
+     * that sets up the gun-body stencil only for a masking <em>scope-slot</em> optic (from bytecode: the before
+     * function keys on the scope-slot index's isScope/isSight). For a masking <em>rail</em> optic that logic
+     * doesn't fire, so the barrel shows through the rail lens. We override the before-runnable with the rail
+     * optic's mask stencil, injected right before the gun body's deferred render (after TaC:Z has already set
+     * the -940 layer + its own after-runnable, which stays intact and resets the stencil).
+     *
+     * <p>BLIND: the {@code acceleratedrendering} mod isn't in the dev workspace, so this path never runs here;
+     * needs in-game verification with the mod installed.
+     */
+    @Inject(
+            method = "renderAccelerated(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;"
+                    + "Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;II)V",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lcom/tacz/guns/client/model/BedrockAnimatedModel;render("
+                            + "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;"
+                            + "Lnet/minecraft/client/renderer/RenderType;II)V",
+                    shift = At.Shift.BEFORE),
+            remap = false, require = 0
+    )
+    private void renaissance$maskGunInRailScopeAccelerated(
+            PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType,
+            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+        if (!transformType.firstPerson()) return;
+        if (renaissance$aimingProgress() <= RENAISSANCE_MASK_AIM) return;
+        ActiveOptic optic = ActiveOptic.resolve(gunItem);
+        if (optic == null || optic.isScope()) return; // scope-slot masking is TaC:Z's own job
+        ClientAttachmentIndex index = optic.index();
+        if (!RailAim.masksOptic(index)) return;
+        int func = RailAim.maskFunc(index);
+        int ref = RailAim.maskRef(index);
+        ARCompat.setRenderBeforeFunction(() -> {
+            RenderHelper.enableItemEntityStencilTest();
+            RenderSystem.stencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+            RenderSystem.stencilFunc(func, ref, 0xFF);
+        });
     }
 
     private static float renaissance$aimingProgress() {

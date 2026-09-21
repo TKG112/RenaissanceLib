@@ -37,7 +37,21 @@ public abstract class AttachmentDisplayParseMixin {
                             + "Ljava/lang/Object;"),
             remap = false)
     private Object renaissance$parseDisplay(Gson gson, JsonElement element, Class<?> clazz) {
-        Object result = gson.fromJson(element, clazz);
+        // Our custom `mount_offset` is an object ({position,rotation}); the TaC:Z beta added a NATIVE
+        // `mount_offset` field typed as a Vector3f (expects an array [x,y,z]). Handing our object form to
+        // TaC:Z's Gson makes its Vector3f adapter throw and abort the whole display parse (→ attachment falls
+        // back to its 2D item model). So for an AttachmentDisplay, parse a copy with our object-form
+        // `mount_offset` removed; we still read our own copy from the original element in applyExtras below.
+        // (No-op on the stable release, which has no such field and just ignored the extra key.)
+        JsonElement toParse = element;
+        if (clazz == AttachmentDisplay.class && element != null && element.isJsonObject()
+                && element.getAsJsonObject().has("mount_offset")
+                && element.getAsJsonObject().get("mount_offset").isJsonObject()) {
+            JsonObject copy = element.getAsJsonObject().deepCopy();
+            copy.remove("mount_offset");
+            toParse = copy;
+        }
+        Object result = gson.fromJson(toParse, clazz);
         if (clazz == AttachmentDisplay.class && result instanceof IUnderbarrelDisplay holder
                 && element != null && element.isJsonObject()) {
             renaissance$applyExtras(holder, element.getAsJsonObject(), gson);

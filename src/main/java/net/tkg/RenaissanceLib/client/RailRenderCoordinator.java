@@ -3,7 +3,7 @@ package net.tkg.RenaissanceLib.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.BedrockGunModel;
-import com.tacz.guns.client.model.functional.AttachmentRender;
+import net.tkg.RenaissanceLib.compat.TaczCompat;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -158,7 +158,7 @@ public final class RailRenderCoordinator {
         local.last().pose().mul(e.pose);
         if (clip != null) RailPassengerClip.begin(clip);
         try {
-            AttachmentRender.renderAttachment(e.sight, gunItem, local, e.transformType, e.light, e.overlay);
+            TaczCompat.renderAttachment(e.sight, gunItem, local, e.transformType, e.light, e.overlay);
         } finally {
             if (clip != null) RailPassengerClip.end();
         }

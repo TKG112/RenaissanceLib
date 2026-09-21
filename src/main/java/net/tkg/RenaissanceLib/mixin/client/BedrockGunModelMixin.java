@@ -18,9 +18,11 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import com.llamalad7.mixinextras.sugar.Local;
 import net.tkg.RenaissanceLib.client.ActiveOptic;
 import net.tkg.RenaissanceLib.client.RailAim;
 import net.tkg.RenaissanceLib.client.RailGunModelContext;
+import net.tkg.RenaissanceLib.compat.TaczDescriptors;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelClient;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -80,28 +82,29 @@ public abstract class BedrockGunModelMixin {
         }
     }
 
-    private static final String RENDER_DESC =
-            "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;"
-                    + "Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;II)V";
+    // The first-person gun render is overloaded in the TaC:Z beta (the stencil masking moved to a BufferSource
+    // overload), so the exact descriptor is variant-specific — see TaczDescriptors in src/tacz_<variant>/java.
+    private static final String RENDER_DESC = TaczDescriptors.RENDER;
+
+    // NB: these render injects capture ZERO target args (just CallbackInfo), and read the couple of values they
+    // need via @Local(argsOnly=true). This keeps them valid across TaC:Z versions — the beta appended args
+    // (floats + MultiBufferSource) to render, and Mixin requires a captured-arg list to match the target
+    // exactly, so capturing the old arg list would fail. @Local captures by type/ordinal among the leading
+    // args, which are unchanged.
 
     /** Publish this gun model while it renders, so a rail laser's draw can be hoisted onto its delegate. */
     @Inject(method = RENDER_DESC, at = @At("HEAD"), remap = false)
-    private void renaissance$beginGunModelContext(
-            PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+    private void renaissance$beginGunModelContext(CallbackInfo ci) {
         RailGunModelContext.begin((BedrockGunModel) (Object) this);
     }
 
     @Inject(method = RENDER_DESC, at = @At("RETURN"), remap = false)
-    private void renaissance$endGunModelContext(
-            PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+    private void renaissance$endGunModelContext(CallbackInfo ci) {
         RailGunModelContext.end();
     }
 
     @Inject(
-            method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;"
-                    + "Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;II)V",
+            method = RENDER_DESC,
             at = @At(
                     value = "INVOKE",
                     target = "Lcom/mojang/blaze3d/systems/RenderSystem;stencilOp(III)V",
@@ -109,8 +112,9 @@ public abstract class BedrockGunModelMixin {
             remap = false
     )
     private void renaissance$maskGunInRailScope(
-            PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) ItemStack gunItem,
+            @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType) {
         if (!transformType.firstPerson()) return;
         if (renaissance$aimingProgress() <= RENAISSANCE_MASK_AIM) return;
         ActiveOptic optic = ActiveOptic.resolve(gunItem);
@@ -134,8 +138,7 @@ public abstract class BedrockGunModelMixin {
      * needs in-game verification with the mod installed.
      */
     @Inject(
-            method = "renderAccelerated(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;"
-                    + "Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;II)V",
+            method = "renderAccelerated",
             at = @At(
                     value = "INVOKE",
                     target = "Lcom/tacz/guns/client/model/BedrockAnimatedModel;render("
@@ -145,8 +148,9 @@ public abstract class BedrockGunModelMixin {
             remap = false, require = 0
     )
     private void renaissance$maskGunInRailScopeAccelerated(
-            PoseStack matrixStack, ItemStack gunItem, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) ItemStack gunItem,
+            @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType) {
         if (!transformType.firstPerson()) return;
         if (renaissance$aimingProgress() <= RENAISSANCE_MASK_AIM) return;
         ActiveOptic optic = ActiveOptic.resolve(gunItem);

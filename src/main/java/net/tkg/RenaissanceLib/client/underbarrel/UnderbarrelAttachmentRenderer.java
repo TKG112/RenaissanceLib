@@ -5,7 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.IFunctionalRenderer;
-import com.tacz.guns.client.model.functional.AttachmentRender;
+import net.tkg.RenaissanceLib.compat.TaczCompat;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -53,7 +53,7 @@ public final class UnderbarrelAttachmentRenderer implements IFunctionalRenderer 
             PoseStack local = new PoseStack();
             local.last().normal().mul(normal);
             local.last().pose().mul(pose);
-            AttachmentRender.renderAttachment(installed, underbarrel, local, transformType, light, overlay);
+            TaczCompat.renderAttachment(installed, underbarrel, local, transformType, light, overlay);
         });
     }
 }

@@ -23,14 +23,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(AttachmentItemRenderer.class)
 public abstract class AttachmentItemRendererMixin {
 
-    @Inject(method = "renderByItem", at = @At("HEAD"))
+    // renderByItem is a GeckoLib override; the TaC:Z beta reshaped it enough that the mixin AP can't pin its
+    // descriptor. require = 0 so this cosmetic hook (rail optics on a standalone attachment item) degrades
+    // gracefully instead of crashing if it can't be applied on a given TaC:Z version.
+    @Inject(method = "renderByItem", at = @At("HEAD"), require = 0)
     private void renaissance$beginRailStandalone(ItemStack stack, ItemDisplayContext transformType,
                                                  PoseStack poseStack, MultiBufferSource buffer,
                                                  int light, int overlay, CallbackInfo ci) {
         RailStandaloneContext.begin(stack);
     }
 
-    @Inject(method = "renderByItem", at = @At("RETURN"))
+    @Inject(method = "renderByItem", at = @At("RETURN"), require = 0)
     private void renaissance$endRailStandalone(ItemStack stack, ItemDisplayContext transformType,
                                                PoseStack poseStack, MultiBufferSource buffer,
                                                int light, int overlay, CallbackInfo ci) {

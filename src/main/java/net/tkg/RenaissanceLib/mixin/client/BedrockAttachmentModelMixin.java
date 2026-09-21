@@ -7,6 +7,7 @@ import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.bedrock.BedrockModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import com.tacz.guns.compat.ar.ARCompat;
+import com.llamalad7.mixinextras.sugar.Local;
 import com.tacz.guns.util.RenderHelper;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -21,6 +22,7 @@ import net.tkg.RenaissanceLib.client.IRailGunItemAccessor;
 import net.tkg.RenaissanceLib.client.RailPassengerClip;
 import net.tkg.RenaissanceLib.client.ShaderManager;
 import net.tkg.RenaissanceLib.client.ScopeShaderRenderer;
+import net.tkg.RenaissanceLib.compat.TaczDescriptors;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -191,38 +193,44 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
     }
 
     @Inject(
-            method = "renderScope(Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;II)V",
+            method = "renderScope",
             at = @At("HEAD"), cancellable = true, remap = false
     )
     private void renaissance$clipPassenger_Scope(
-            PoseStack matrixStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) PoseStack matrixStack,
+            @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType,
+            @Local(argsOnly = true, ordinal = 0) RenderType renderType,
+            @Local(argsOnly = true, ordinal = 0) int light,
+            @Local(argsOnly = true, ordinal = 1) int overlay) {
         if (renaissance$renderClippedPassenger(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
     }
 
     @Inject(
-            method = "renderSight(Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;II)V",
+            method = "renderSight",
             at = @At("HEAD"), cancellable = true, remap = false
     )
     private void renaissance$clipPassenger_Sight(
-            PoseStack matrixStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) PoseStack matrixStack,
+            @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType,
+            @Local(argsOnly = true, ordinal = 0) RenderType renderType,
+            @Local(argsOnly = true, ordinal = 0) int light,
+            @Local(argsOnly = true, ordinal = 1) int overlay) {
         if (renaissance$renderClippedPassenger(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
     }
 
     @Inject(
-            method = "renderBoth(Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;II)V",
+            method = "renderBoth",
             at = @At("HEAD"), cancellable = true, remap = false
     )
     private void renaissance$clipPassenger_Both(
-            PoseStack matrixStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) PoseStack matrixStack,
+            @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType,
+            @Local(argsOnly = true, ordinal = 0) RenderType renderType,
+            @Local(argsOnly = true, ordinal = 0) int light,
+            @Local(argsOnly = true, ordinal = 1) int overlay) {
         if (renaissance$renderClippedPassenger(matrixStack, transformType, renderType, light, overlay)) ci.cancel();
     }
 
@@ -314,31 +322,23 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
      * showed on top of it as a dark ring. The reticle division draws over this composite afterwards, on top.
      */
     @Inject(
-            method = "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;IIZ)V",
+            method = TaczDescriptors.OCULAR,
             at = @At(value = "INVOKE", ordinal = 1, shift = At.Shift.AFTER,
                     target = "Lcom/mojang/blaze3d/systems/RenderSystem;stencilOp(III)V"),
             remap = false
     )
-    private void renaissance$compositeAfterCarve(
-            PoseStack matrixStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, boolean selective, CallbackInfo ci) {
+    private void renaissance$compositeAfterCarve(CallbackInfo ci) {
         if (ShaderManager.isShaderActive()) {
             ScopeShaderRenderer.compositeIntoLens();
         }
     }
 
     @Inject(
-            method = "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                    "Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;IIZ)V",
+            method = TaczDescriptors.OCULAR,
             at = @At("TAIL"),
             remap = false
     )
-    private void renaissance$afterOcularAndDivision(
-            PoseStack matrixStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, boolean selective, CallbackInfo ci) {
+    private void renaissance$afterOcularAndDivision(CallbackInfo ci) {
         // For the end-of-frame composite (Iris shaderpack OR Accelerated Rendering), capture the lens mask now
         // — this runs in both the immediate and the AR-deferred ocular draw, so AR gets its mask too.
         if (ScopeShaderRenderer.useEndOfFramePath() && ShaderManager.isShaderActive()) {

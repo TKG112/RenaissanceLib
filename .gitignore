@@ -23,3 +23,6 @@ run
 
 # Files from Forge MDK
 forge*changelog.txt
+
+# Unreleased TaC:Z beta jar for the beta build variant (not committed; see BUILDING.md)
+libs/tacz-*-all.jar

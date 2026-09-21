@@ -19,6 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import com.llamalad7.mixinextras.sugar.Local;
+import net.tkg.RenaissanceLib.compat.TaczCompat;
 import net.tkg.RenaissanceLib.client.ActiveOptic;
 import net.tkg.RenaissanceLib.client.RailAim;
 import net.tkg.RenaissanceLib.client.RailGunModelContext;
@@ -115,6 +116,7 @@ public abstract class BedrockGunModelMixin {
             CallbackInfo ci,
             @Local(argsOnly = true, ordinal = 0) ItemStack gunItem,
             @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType) {
+        if (!TaczCompat.CLIP_IN_LENS) return; // buffered pipeline (beta): immediate stencil mask breaks the lens
         if (!transformType.firstPerson()) return;
         if (renaissance$aimingProgress() <= RENAISSANCE_MASK_AIM) return;
         ActiveOptic optic = ActiveOptic.resolve(gunItem);

@@ -21,6 +21,15 @@ public final class TaczCompat {
     private TaczCompat() {}
 
     /**
+     * Whether our immediate-mode GL stencil in-lens clipping (canted-rail passenger clip + gun-in-lens mask) can
+     * be used. The beta rewrote rendering to a buffered/batched {@link net.minecraft.client.renderer.MultiBufferSource}
+     * pipeline, so draws no longer flush in the immediate order our stencil ops assume — leaving the stencil
+     * state wrong (the giant black ocular square). Disabled on beta: scopes/rail sights render plainly (no
+     * multi-optic in-lens clipping) but correctly. STABLE keeps it on.
+     */
+    public static final boolean CLIP_IN_LENS = false;
+
+    /**
      * Render an attachment at the current pose. The beta's {@code renderAttachment} gained an
      * {@link AttachmentType} parameter (the slot being rendered); we derive it from the attachment itself.
      */

@@ -22,6 +22,7 @@ import net.tkg.RenaissanceLib.client.IRailGunItemAccessor;
 import net.tkg.RenaissanceLib.client.RailPassengerClip;
 import net.tkg.RenaissanceLib.client.ShaderManager;
 import net.tkg.RenaissanceLib.client.ScopeShaderRenderer;
+import net.tkg.RenaissanceLib.compat.TaczCompat;
 import net.tkg.RenaissanceLib.compat.TaczDescriptors;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Mixin;
@@ -174,6 +175,9 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
      */
     private boolean renaissance$renderClippedPassenger(PoseStack matrixStack, ItemDisplayContext transformType,
                                                        RenderType renderType, int light, int overlay) {
+        // On a buffered TaC:Z pipeline (beta) our immediate-mode stencil clip corrupts the ocular; let the
+        // passenger render normally instead (no in-lens clip). See TaczCompat.CLIP_IN_LENS.
+        if (!TaczCompat.CLIP_IN_LENS) return false;
         RailPassengerClip.Mask mask = RailPassengerClip.current();
         if (mask == null) return false;
 

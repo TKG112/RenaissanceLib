@@ -18,6 +18,12 @@ public final class TaczDescriptors {
             "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;"
                     + "Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;II)V";
 
+    /** {@code BedrockAttachmentModel.render(attachment, gun, ...)} — the attachment draw (attachment stack first). */
+    public static final String ATT_RENDER =
+            "render(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;"
+                    + "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;"
+                    + "Lnet/minecraft/client/renderer/RenderType;II)V";
+
     /** {@code BedrockAttachmentModel.renderOcularAndDivision} — the scope lens ocular/reticle draw. */
     public static final String OCULAR =
             "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;"

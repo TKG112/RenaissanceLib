@@ -87,11 +87,12 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
         return attachmentItem;
     }
 
-    /** The render(...) descriptor — attachment stack first, gun stack second (verified). */
-    private static final String RENAISSANCE_ATT_RENDER =
-            "render(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;" +
-                    "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;" +
-                    "Lnet/minecraft/client/renderer/RenderType;II)V";
+    /**
+     * The attachment {@code render(...)} descriptor — attachment stack first, gun stack second. Overload differs
+     * per TaC:Z version (the beta calls a BufferSource overload), so it's a per-variant constant; see
+     * {@link TaczDescriptors#ATT_RENDER}.
+     */
+    private static final String RENAISSANCE_ATT_RENDER = TaczDescriptors.ATT_RENDER;
 
     /**
      * At the start of an underbarrel's attachment render: (1) hide its gun-only bones (support arm, reload
@@ -104,8 +105,10 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
      */
     @Inject(method = RENAISSANCE_ATT_RENDER, at = @At("HEAD"), remap = false)
     private void renaissance$underbarrelRenderHead(
-            ItemStack attachment, ItemStack gunItem, PoseStack poseStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) ItemStack attachment,
+            @Local(argsOnly = true, ordinal = 1) ItemStack gunItem,
+            @Local(argsOnly = true, ordinal = 0) PoseStack poseStack) {
         if (attachment == null || attachment.isEmpty()) return;
         if (!Underbarrel.isUnderbarrel(attachment)) return;
 
@@ -151,8 +154,9 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
     /** Pops the {@code mount_offset} transform pushed in {@link #renaissance$underbarrelRenderHead}. */
     @Inject(method = RENAISSANCE_ATT_RENDER, at = @At("RETURN"), remap = false)
     private void renaissance$underbarrelRenderReturn(
-            ItemStack attachment, ItemStack gunItem, PoseStack poseStack, ItemDisplayContext transformType,
-            RenderType renderType, int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) ItemStack attachment,
+            @Local(argsOnly = true, ordinal = 0) PoseStack poseStack) {
         if (attachment == null || attachment.isEmpty()) return;
         if (!Underbarrel.isUnderbarrel(attachment)) return;
         if (UnderbarrelClient.getMountOffset(attachment) != null) {

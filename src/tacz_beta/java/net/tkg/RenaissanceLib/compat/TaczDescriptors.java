@@ -20,6 +20,16 @@ public final class TaczDescriptors {
                     + "Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;IIFFFF"
                     + "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;)V";
 
+    /**
+     * {@code BedrockAttachmentModel.render(attachment, gun, ...)} — the overload TaC:Z actually calls to draw an
+     * attachment. The beta routes through the BufferSource overload ({@code ...II, float, BufferSource}); the
+     * plain 7-arg one is a convenience stub that isn't on the render path, so our hook must target this.
+     */
+    public static final String ATT_RENDER =
+            "render(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;"
+                    + "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;"
+                    + "Lnet/minecraft/client/renderer/RenderType;IIFLnet/minecraft/client/renderer/MultiBufferSource$BufferSource;)V";
+
     /** {@code BedrockAttachmentModel.renderOcularAndDivision} — beta's BufferSource overload (7 args). */
     public static final String OCULAR =
             "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;"

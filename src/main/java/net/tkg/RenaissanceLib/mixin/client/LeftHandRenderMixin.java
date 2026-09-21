@@ -1,7 +1,7 @@
 package net.tkg.RenaissanceLib.mixin.client;
 
+import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.tacz.guns.client.model.functional.LeftHandRender;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -30,15 +30,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = LeftHandRender.class, remap = false)
 public abstract class LeftHandRenderMixin {
 
+    // Name-only selector: the beta added a MultiBufferSource overload of render() and calls THAT one, so a
+    // fixed 5-arg descriptor no longer matches the live method. Name-only injects into every render overload
+    // (there are only these two), and @Local captures the args we need regardless of the trailing additions.
     @Inject(
-            method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;"
-                    + "Lnet/minecraft/world/item/ItemDisplayContext;II)V",
+            method = "render",
             at = @At("HEAD"),
             cancellable = true,
             remap = false)
     private void renaissance$hideHostLeftHandForUnderbarrel(
-            PoseStack poseStack, VertexConsumer vertexBuffer, ItemDisplayContext transformType,
-            int light, int overlay, CallbackInfo ci) {
+            CallbackInfo ci,
+            @Local(argsOnly = true, ordinal = 0) PoseStack poseStack,
+            @Local(argsOnly = true, ordinal = 0) ItemDisplayContext transformType) {
         if (!transformType.firstPerson()) return;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;

@@ -24,6 +24,11 @@ public final class TaczDescriptors {
                     + "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;"
                     + "Lnet/minecraft/client/renderer/RenderType;II)V";
 
+    /** {@code LeftHandRender.render} — the support-hand functional renderer (5-arg on stable). */
+    public static final String HAND_RENDER =
+            "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;"
+                    + "Lnet/minecraft/world/item/ItemDisplayContext;II)V";
+
     /** {@code BedrockAttachmentModel.renderOcularAndDivision} — the scope lens ocular/reticle draw. */
     public static final String OCULAR =
             "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;"

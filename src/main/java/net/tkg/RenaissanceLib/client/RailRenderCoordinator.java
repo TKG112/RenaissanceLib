@@ -159,6 +159,10 @@ public final class RailRenderCoordinator {
         if (clip != null) RailPassengerClip.begin(clip);
         try {
             TaczCompat.renderAttachment(e.sight, gunItem, local, e.transformType, e.light, e.overlay);
+            // Drain the shared buffer now so an out-of-band optic's ocular flushes in sequence with this render
+            // (beta's deferred pipeline otherwise flushes it at end-of-frame with the wrong stencil). No-op on
+            // stable.
+            TaczCompat.flushRenderBuffers();
         } finally {
             if (clip != null) RailPassengerClip.end();
         }

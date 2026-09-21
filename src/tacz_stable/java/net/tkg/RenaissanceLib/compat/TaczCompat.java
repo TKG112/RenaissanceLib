@@ -30,4 +30,8 @@ public final class TaczCompat {
                                         ItemDisplayContext ctx, int light, int overlay) {
         AttachmentRender.renderAttachment(attachment, gun, poseStack, ctx, light, overlay);
     }
+
+    /** No-op on the stable release (immediate render pipeline; nothing to flush). See the beta variant. */
+    public static void flushRenderBuffers() {
+    }
 }

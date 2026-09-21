@@ -10,6 +10,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
+import net.tkg.RenaissanceLib.compat.TaczDescriptors;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelHandAnchor;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelTransition;
 import org.joml.Matrix4f;
@@ -30,11 +31,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = LeftHandRender.class, remap = false)
 public abstract class LeftHandRenderMixin {
 
-    // Name-only selector: the beta added a MultiBufferSource overload of render() and calls THAT one, so a
-    // fixed 5-arg descriptor no longer matches the live method. Name-only injects into every render overload
-    // (there are only these two), and @Local captures the args we need regardless of the trailing additions.
+    // The support-hand functional renderer. TaC:Z calls the IFunctionalRenderer 6-arg (BufferSource) overload,
+    // which LeftHandRender overrides, so the beta must hook that exact overload (a name-only selector didn't
+    // take). Per-variant descriptor: 5-arg on stable, 6-arg on beta. See TaczDescriptors.HAND_RENDER.
     @Inject(
-            method = "render",
+            method = TaczDescriptors.HAND_RENDER,
             at = @At("HEAD"),
             cancellable = true,
             remap = false)

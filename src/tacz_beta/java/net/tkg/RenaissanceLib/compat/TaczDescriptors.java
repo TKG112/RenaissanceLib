@@ -30,6 +30,15 @@ public final class TaczDescriptors {
                     + "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;"
                     + "Lnet/minecraft/client/renderer/RenderType;IIFLnet/minecraft/client/renderer/MultiBufferSource$BufferSource;)V";
 
+    /**
+     * {@code LeftHandRender.render} — the support-hand functional renderer. The render loop calls the
+     * {@code IFunctionalRenderer} 6-arg BufferSource overload, which LeftHandRender overrides, so we must hook
+     * that exact overload on the beta.
+     */
+    public static final String HAND_RENDER =
+            "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;"
+                    + "Lnet/minecraft/world/item/ItemDisplayContext;IILnet/minecraft/client/renderer/MultiBufferSource$BufferSource;)V";
+
     /** {@code BedrockAttachmentModel.renderOcularAndDivision} — beta's BufferSource overload (7 args). */
     public static final String OCULAR =
             "renderOcularAndDivision(Lcom/mojang/blaze3d/vertex/PoseStack;"

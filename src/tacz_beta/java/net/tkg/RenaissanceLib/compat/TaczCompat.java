@@ -39,4 +39,14 @@ public final class TaczCompat {
         AttachmentType type = iAttachment == null ? AttachmentType.NONE : iAttachment.getType(attachment);
         AttachmentRender.renderAttachment(attachment, gun, type, poseStack, ctx, light, overlay);
     }
+
+    /**
+     * Flush the shared buffer now. The beta defers the scope ocular draws into the shared MultiBufferSource and
+     * only flushes at end of frame; when we render a rail optic out-of-band that leaves its ocular flushing with
+     * the wrong stencil state (the giant black square). Draining here forces those draws to happen in sequence
+     * with the render we just did. No-op on stable (immediate pipeline).
+     */
+    public static void flushRenderBuffers() {
+        net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
+    }
 }

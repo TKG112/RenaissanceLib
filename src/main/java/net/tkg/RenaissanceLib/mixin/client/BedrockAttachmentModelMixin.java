@@ -14,6 +14,7 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.tkg.RenaissanceLib.RenaissanceLibMod;
 import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAnimator;
@@ -61,6 +62,9 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
     /** The subset always hidden in the attachment pass (a stray reload shell casing), even when active. */
     private static final Set<String> RENAISSANCE_UB_SHELL_BONES = Set.of("shell_bullet");
 
+    /** Guards the underbarrel-render-prep error log so a per-frame failure logs once, not every frame. */
+    private static boolean renaissance$ubRenderErrorLogged = false;
+
     @Shadow
     protected List<BedrockPart> scopeBodyPath;
 
@@ -105,20 +109,31 @@ public abstract class BedrockAttachmentModelMixin implements IRailGunItemAccesso
         if (attachment == null || attachment.isEmpty()) return;
         if (!Underbarrel.isUnderbarrel(attachment)) return;
 
-        // Pose the underbarrel for its current animation frame (idle/shoot/reload) before it draws.
-        UnderbarrelAnimator.apply((BedrockAttachmentModel) (Object) this, attachment);
+        // Animation + bone-hiding are wrapped so that if anything throws (e.g. a TaC:Z-beta model/animation API
+        // change), it doesn't abort the whole attachment render — which would drop the underbarrel to its flat
+        // 2D item fallback. The first failure is logged once with the real cause.
+        try {
+            // Pose the underbarrel for its current animation frame (idle/shoot/reload) before it draws.
+            UnderbarrelAnimator.apply((BedrockAttachmentModel) (Object) this, attachment);
 
-        // Hide gun-only bones. Walk the parts the model actually renders (shouldRender), not the animated-model
-        // `root` field (null for a plain grip attachment). When the underbarrel is the active weapon we keep
-        // its support-arm chain visible (so the left hand follows it) and hide only the shell casing; otherwise
-        // the whole gun-only set is hidden. Also keep the arm chain visible while a host<->underbarrel switch is
-        // easing (transition factor > 0), so the interpolated support hand doesn't vanish mid-transition.
-        boolean active = ActiveWeapon.isUnderbarrelActive(gunItem)
-                || net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelTransition.factor() > 0f;
-        List<BedrockPart> parts = ((BedrockModel) (Object) this).getShouldRender();
-        if (parts != null) {
-            for (BedrockPart part : parts) {
-                renaissance$applyUnderbarrelBoneVisibility(part, active);
+            // Hide gun-only bones. Walk the parts the model actually renders (shouldRender), not the animated-model
+            // `root` field (null for a plain grip attachment). When the underbarrel is the active weapon we keep
+            // its support-arm chain visible (so the left hand follows it) and hide only the shell casing; otherwise
+            // the whole gun-only set is hidden. Also keep the arm chain visible while a host<->underbarrel switch is
+            // easing (transition factor > 0), so the interpolated support hand doesn't vanish mid-transition.
+            boolean active = ActiveWeapon.isUnderbarrelActive(gunItem)
+                    || net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelTransition.factor() > 0f;
+            List<BedrockPart> parts = ((BedrockModel) (Object) this).getShouldRender();
+            if (parts != null) {
+                for (BedrockPart part : parts) {
+                    renaissance$applyUnderbarrelBoneVisibility(part, active);
+                }
+            }
+        } catch (Throwable t) {
+            if (!renaissance$ubRenderErrorLogged) {
+                renaissance$ubRenderErrorLogged = true;
+                RenaissanceLibMod.LOGGER.error("[RenaissanceLib] underbarrel render prep failed "
+                        + "(model falls back to 2D); animation/bone-hiding skipped", t);
             }
         }
 

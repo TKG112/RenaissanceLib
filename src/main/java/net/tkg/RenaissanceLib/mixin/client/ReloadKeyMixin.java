@@ -65,7 +65,7 @@ public class ReloadKeyMixin {
         // syncs back, so cover the gap until then by refusing to re-trigger within the reload's own duration.
         long now = System.currentTimeMillis();
         int current = UnderbarrelAmmo.get(gun, ubData);
-        long reloadMs = Math.max(0L, UnderbarrelAmmo.reloadDurationTicks(gun, ubData, current)) * 50L;
+        long reloadMs = Math.max(0L, UnderbarrelAmmo.totalReloadTicks(gun, ubData, current)) * 50L;
         if (now - renaissance$lastReloadMs < reloadMs) return;
         renaissance$lastReloadMs = now;
 

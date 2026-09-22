@@ -25,6 +25,8 @@ import net.minecraft.world.level.Level;
 public final class UnderbarrelAmmo {
     private static final String KEY_AMMO = "RenaissanceUnderbarrelAmmo";
     private static final String KEY_RELOAD_END = "RenaissanceUnderbarrelReloadEnd";
+    private static final String KEY_FEED_END = "RenaissanceUnderbarrelFeedEnd";
+    private static final String KEY_PRE_RELOAD = "RenaissanceUnderbarrelPreReloadAmmo";
 
     private UnderbarrelAmmo() {}
 
@@ -70,45 +72,38 @@ public final class UnderbarrelAmmo {
     }
 
     /**
-     * Total reload duration in ticks: the feed ("empty") time only. TaC:Z's post-reload {@code cooldown}
-     * is deliberately excluded so the underbarrel can fire the instant loading finishes — otherwise the
-     * magazine refills at reload start (HUD looks done) but firing stays locked through the cooldown, which
-     * reads as an unexpected gap. Authors who want a post-reload delay put it in the feed time.
+     * The <b>feed</b> phase in ticks: how long until the rounds are loaded (the {@code feed} "empty" time). For
+     * a manual (shell-by-shell) feed this is per-shell and scales with the rounds being loaded; otherwise it's
+     * the flat feed time. The post-feed {@code cooldown} is separate — see {@link #cooldownTicks}.
      */
-    public static int reloadDurationTicks(GunData ubData) {
+    public static int feedTicks(ItemStack gunItem, GunData ubData, int currentAmmo) {
         GunReloadData reload = ubData.getReloadData();
-        float seconds = 0f;
-        if (reload != null && reload.getFeed() != null) {
-            seconds = reload.getFeed().getEmptyTime();
+        float perShell = (reload != null && reload.getFeed() != null) ? reload.getFeed().getEmptyTime() : 0f;
+        if (perShell <= 0f) perShell = 1.0f;
+        if (reload != null && reload.getType() == FeedType.MANUAL) {
+            int capacity = gunItem != null ? maxAmmo(gunItem, ubData) : maxAmmo(ubData);
+            int shells = Math.max(1, capacity - Math.max(0, currentAmmo));
+            return Math.max(1, Math.round(Math.max(0.1f, perShell * shells) * 20f));
         }
-        if (seconds <= 0f) seconds = 1.0f;
-        return Math.max(1, Math.round(seconds * 20f));
+        return Math.max(1, Math.round(perShell * 20f));
     }
 
     /**
-     * Reload duration accounting for the rounds actually being loaded. For a manual-feed (shell-by-shell)
-     * underbarrel the {@code feed} time is <em>per shell</em>, so the total scales with how many rounds are
-     * missing; other feed types use the flat {@link #reloadDurationTicks(GunData)}.
+     * The <b>cooldown</b> phase in ticks: the lockout <em>after</em> the rounds are loaded, before the
+     * underbarrel can fire again (TaC:Z's reload {@code cooldown} "empty" time). Zero if none is authored.
      */
-    public static int reloadDurationTicks(GunData ubData, int currentAmmo) {
-        return reloadDurationTicks(null, ubData, currentAmmo);
-    }
-
-    /** As {@link #reloadDurationTicks(GunData, int)} but counts shells against the mag-attachment capacity. */
-    public static int reloadDurationTicks(ItemStack gunItem, GunData ubData, int currentAmmo) {
+    public static int cooldownTicks(GunData ubData) {
         GunReloadData reload = ubData.getReloadData();
-        if (reload == null || reload.getType() != FeedType.MANUAL) {
-            return reloadDurationTicks(ubData);
-        }
-        int capacity = gunItem != null ? maxAmmo(gunItem, ubData) : maxAmmo(ubData);
-        int shells = Math.max(1, capacity - Math.max(0, currentAmmo));
-        float perShell = reload.getFeed() != null ? reload.getFeed().getEmptyTime() : 0.5f;
-        // Feed (per-shell) time only — no post-reload cooldown, matching the magazine path above.
-        float seconds = Math.max(0.1f, perShell * shells);
-        return Math.max(1, Math.round(seconds * 20f));
+        float seconds = (reload != null && reload.getCooldown() != null) ? reload.getCooldown().getEmptyTime() : 0f;
+        return Math.max(0, Math.round(seconds * 20f));
     }
 
-    /** Whether the underbarrel is mid-reload (can't fire yet). */
+    /** The full reload lockout in ticks (feed + cooldown) — how long until the underbarrel can fire again. */
+    public static int totalReloadTicks(ItemStack gunItem, GunData ubData, int currentAmmo) {
+        return feedTicks(gunItem, ubData, currentAmmo) + cooldownTicks(ubData);
+    }
+
+    /** Whether the underbarrel is mid-reload (can't fire yet) — locked through feed + cooldown. */
     public static boolean isReloading(ItemStack gunItem, Level level) {
         if (gunItem == null || level == null || !gunItem.hasTag()
                 || !gunItem.getTag().contains(KEY_RELOAD_END)) {
@@ -117,9 +112,39 @@ public final class UnderbarrelAmmo {
         return level.getGameTime() < gunItem.getTag().getLong(KEY_RELOAD_END);
     }
 
-    /** Begin a reload window ending {@code durationTicks} from now. */
-    public static void startReload(ItemStack gunItem, Level level, int durationTicks) {
+    /** True while the rounds haven't been fed in yet (before the feed phase ends) during an active reload. */
+    private static boolean beforeFeed(ItemStack gunItem, Level level) {
+        if (gunItem == null || level == null || !gunItem.hasTag()
+                || !gunItem.getTag().contains(KEY_FEED_END)) {
+            return false;
+        }
+        return level.getGameTime() < gunItem.getTag().getLong(KEY_FEED_END);
+    }
+
+    /**
+     * Rounds to <em>display</em>: the pre-reload count until the feed phase completes, then the loaded count.
+     * So the magazine visibly fills when the rounds actually go in (at the feed time), not at reload start —
+     * while firing stays locked through the following cooldown ({@link #isReloading}).
+     */
+    public static int getDisplay(ItemStack gunItem, GunData ubData, Level level) {
+        if (beforeFeed(gunItem, level) && gunItem.getTag().contains(KEY_PRE_RELOAD)) {
+            return Math.max(0, gunItem.getTag().getInt(KEY_PRE_RELOAD));
+        }
+        return get(gunItem, ubData);
+    }
+
+    /**
+     * Begin a two-phase reload: {@code feedTicks} until the rounds load (display), then {@code cooldownTicks}
+     * more before firing is allowed. {@code preReloadAmmo} is the count shown until the feed completes. The
+     * loaded count itself ({@link #set}) is written by the caller at reload start (authoritative), but stays
+     * hidden by {@link #getDisplay} and unusable by {@link #isReloading} until the phases elapse.
+     */
+    public static void startReload(ItemStack gunItem, Level level, int feedTicks, int cooldownTicks,
+                                   int preReloadAmmo) {
         if (gunItem == null || level == null) return;
-        gunItem.getOrCreateTag().putLong(KEY_RELOAD_END, level.getGameTime() + durationTicks);
+        long now = level.getGameTime();
+        gunItem.getOrCreateTag().putLong(KEY_FEED_END, now + Math.max(0, feedTicks));
+        gunItem.getOrCreateTag().putLong(KEY_RELOAD_END, now + Math.max(0, feedTicks) + Math.max(0, cooldownTicks));
+        gunItem.getOrCreateTag().putInt(KEY_PRE_RELOAD, Math.max(0, preReloadAmmo));
     }
 }

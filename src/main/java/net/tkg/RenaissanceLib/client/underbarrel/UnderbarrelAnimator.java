@@ -110,7 +110,7 @@ public final class UnderbarrelAnimator {
         boolean empty = current <= 0;
 
         if (animFile != null && manual) {
-            double durationSec = Math.max(0, UnderbarrelAmmo.reloadDurationTicks(gun, ubData, current)) / 20.0;
+            double durationSec = Math.max(0, UnderbarrelAmmo.feedTicks(gun, ubData, current)) / 20.0;
             if (beginShellReload(animFile, empty, durationSec)) {
                 return;
             }

@@ -118,7 +118,10 @@ public class GunHudOverlayMixin {
             remap = false)
     private int renaissance$currentAmmo(IGun iGun, ItemStack gunItem) {
         GunData ub = renaissance$activeUnderbarrel(gunItem);
-        return ub != null ? UnderbarrelAmmo.get(gunItem, ub) : iGun.getCurrentAmmoCount(gunItem);
+        // getDisplay: shows the pre-reload count until the rounds actually feed in, then the loaded count.
+        return ub != null
+                ? UnderbarrelAmmo.getDisplay(gunItem, ub, Minecraft.getInstance().level)
+                : iGun.getCurrentAmmoCount(gunItem);
     }
 
     /** The underbarrel tracks all its rounds in one count — suppress the host gun's "+1 in barrel" bump. */

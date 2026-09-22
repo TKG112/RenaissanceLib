@@ -44,6 +44,8 @@ public final class UnderbarrelFire {
 
     private static long lastFireMs = 0L;
     private static boolean wasDown = false;
+    private static boolean renaissance$fireCacheErrorLogged = false;
+    private static boolean renaissance$fireSoundNullLogged = false;
 
     private UnderbarrelFire() {}
 
@@ -93,11 +95,26 @@ public final class UnderbarrelFire {
             // (the server's 3p broadcast excludes the shooter, so play locally). A silencer — one of the
             // underbarrel's own attachments — switches to the silenced sound and hides the muzzle flash.
             ItemStack ub = Underbarrel.getInstalledUnderbarrel(gun);
-            boolean silenced = UnderbarrelCache.compute(gun, ub, ubData).isSilenced();
+            // Compute the silencer state defensively: it runs the attachment stat cache, and a failure there
+            // (e.g. a TaC:Z-beta modifier/cache change) must not swallow the shot sound + the effects below.
+            boolean silenced = false;
+            try {
+                silenced = UnderbarrelCache.compute(gun, ub, ubData).isSilenced();
+            } catch (Throwable t) {
+                if (!renaissance$fireCacheErrorLogged) {
+                    renaissance$fireCacheErrorLogged = true;
+                    net.tkg.RenaissanceLib.RenaissanceLibMod.LOGGER.error(
+                            "[RenaissanceLib] underbarrel fire stat-cache failed; firing unsilenced", t);
+                }
+            }
             ResourceLocation sound = UnderbarrelClient.getFireSound(ub, silenced, false);
             if (sound != null) {
                 float pitch = 0.9f + player.getRandom().nextFloat() * 0.125f;
                 SoundPlayManager.playClientSound(player, sound, 0.8f, pitch, 16);
+            } else if (!renaissance$fireSoundNullLogged) {
+                renaissance$fireSoundNullLogged = true;
+                net.tkg.RenaissanceLib.RenaissanceLibMod.LOGGER.warn(
+                        "[RenaissanceLib] underbarrel fire sound is null (no 'shoot' in underbarrel_display.sounds?)");
             }
             applyRecoil(gun, ubData);
             if (!silenced) UnderbarrelEffects.onFire();

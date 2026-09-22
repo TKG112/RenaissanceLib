@@ -17,6 +17,7 @@ import net.tkg.RenaissanceLib.attachment.MountPath;
 import net.tkg.RenaissanceLib.attachment.RailStorage;
 import net.tkg.RenaissanceLib.attachment.RailsModifier;
 import net.tkg.RenaissanceLib.attachment.ScopeRails;
+import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAim;
 import org.lwjgl.opengl.GL11;
 import org.joml.Matrix4f;
 
@@ -97,6 +98,24 @@ public final class RailAim {
         com.tacz.guns.api.item.IAttachment iAttachment =
                 com.tacz.guns.api.item.IAttachment.getIAttachmentOrNull(attachment);
         return iAttachment == null ? null : iAttachment.getAttachmentId(attachment);
+    }
+
+    /**
+     * The first-person aim matrix accounting for our two aim overrides — underbarrel iron sights and mounted
+     * rail sights — or {@code original} (TaC:Z's own value) when neither applies. Shared by the per-variant
+     * aim-anchor mixins (the aim {@code getPositioningNodeInverse} overload differs between the TaC:Z release
+     * and the beta), so the decision lives in one place.
+     */
+    public static Matrix4f resolveAim(com.tacz.guns.client.model.BedrockGunModel model, ItemStack stack,
+                                      List<BedrockPart> nodePath, Matrix4f original) {
+        if (UnderbarrelAim.isIronAimActive(stack)) {
+            Matrix4f ubAim = UnderbarrelAim.aimMatrix(model, stack);
+            if (ubAim != null) return ubAim;
+        }
+        if (ActiveOptic.hasMountedRailSight(stack)) {
+            return easedAimMatrix(nodePath, stack);
+        }
+        return original;
     }
 
     /** Persisted eased aim matrix while a rail sight is in play; reset when the cycle isn't combined. */

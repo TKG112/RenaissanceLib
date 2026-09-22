@@ -14,9 +14,9 @@ import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.client.ActiveOptic;
 import net.tkg.RenaissanceLib.client.RailAim;
-import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAim;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelCameraAnchor;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelTransition;
+import net.tkg.RenaissanceLib.compat.TaczDescriptors;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -65,7 +65,7 @@ public abstract class FirstPersonRenderGunEventMixin {
                     value = "INVOKE",
                     target = "Lcom/tacz/guns/client/event/FirstPersonRenderGunEvent;"
                             + "getPositioningNodeInverse(Ljava/util/List;)Lorg/joml/Matrix4f;",
-                    ordinal = 1),
+                    ordinal = TaczDescriptors.IDLE_ANCHOR_ORDINAL),
             remap = false
     )
     private static Matrix4f renaissance$anchorToUnderbarrelCamera(
@@ -127,27 +127,8 @@ public abstract class FirstPersonRenderGunEventMixin {
         return attachmentModel.getScopeViewPath(viewSwitchCount);
     }
 
-    @Redirect(
-            method = "applyFirstPersonPositioningTransform",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/tacz/guns/client/event/FirstPersonRenderGunEvent;"
-                            + "getPositioningNodeInverse(Ljava/util/List;)Lorg/joml/Matrix4f;",
-                    ordinal = 0),
-            remap = false
-    )
-    private static Matrix4f renaissance$easeAimMatrix(
-            List<BedrockPart> nodePath,
-            PoseStack poseStack, BedrockGunModel model, ItemStack stack,
-            float aimingProgress, float refitScreenOpeningProgress) {
-        // Optional underbarrel iron sights: when the active underbarrel declares an iron_view node, aim through
-        // it (gun grip node + underbarrel iron_view) instead of the host gun's iron sights. TaC:Z smooths this
-        // returned matrix itself (oldAimingViewMatrix), so no extra easing is needed here. Falls through to the
-        // host/rail aim when the underbarrel has no iron sights.
-        if (UnderbarrelAim.isIronAimActive(stack)) {
-            Matrix4f ubAim = UnderbarrelAim.aimMatrix(model, stack);
-            if (ubAim != null) return ubAim;
-        }
-        return RailAim.easedAimMatrix(nodePath, stack);
-    }
+    // The AIM anchor redirect lives in a per-variant mixin (FirstPersonRenderGunEventAimMixin): TaC:Z's release
+    // computes the aim anchor via getPositioningNodeInverse(List), but the beta moved it to a new 3-arg overload
+    // getPositioningNodeInverse(List, Vector3f, int) — a different target + handler signature per version. The
+    // aim decision itself is shared in RailAim#resolveAim.
 }

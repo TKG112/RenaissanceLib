@@ -25,6 +25,7 @@
     "client.ClientAttachmentIndexMixin",
     "client.FireSelectKeyMixin",
     "client.FirstPersonRenderGunEventMixin",
+    "client.FirstPersonRenderGunEventAimMixin",
     "client.InspectKeyMixin",
     "client.GameRendererMixin",
     "client.GunHudOverlayMixin",

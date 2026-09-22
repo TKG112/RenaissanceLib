@@ -13,6 +13,14 @@ public final class TaczDescriptors {
 
     private TaczDescriptors() {}
 
+    /**
+     * Ordinal of the <em>idle</em>-anchor {@code getPositioningNodeInverse(List)} call in
+     * {@code applyFirstPersonPositioningTransform}. On the release the aim anchor also uses that 1-arg method
+     * (so idle is the 2nd call, ordinal 1); the beta moved the aim anchor to a new 3-arg overload, so idle
+     * becomes the 1st 1-arg call (ordinal 0).
+     */
+    public static final int IDLE_ANCHOR_ORDINAL = 1;
+
     /** {@code BedrockGunModel.render} — the first-person gun render (stencil masking lives here). */
     public static final String RENDER =
             "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;"

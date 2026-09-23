@@ -12,14 +12,13 @@ import com.tacz.guns.client.model.bedrock.BedrockPart;
 import net.minecraft.util.Mth;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.tkg.RenaissanceLib.client.RailAim;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
@@ -132,14 +131,17 @@ public final class RefitOrbit {
     /** Bounding box per gun model (rest pose) — models are rebuilt on resource reload, so weak keys expire them. */
     private static final Map<BedrockGunModel, Bounds> BOUNDS_CACHE = new WeakHashMap<>();
 
+    /** TaC:Z's hand anchors: they carry placeholder arm cubes that are never drawn as gun geometry. */
+    private static final Set<String> HAND_NODES = Set.of("lefthand_pos", "righthand_pos");
+
     /**
      * The gun's rotation centre in the positioning matrix's input space: the {@code refit_pivot} bone if the pack
      * defines one; otherwise the centre of the model's bounding box (its visible cubes), so every gun turns about
      * its own middle with nothing to author; the mount-bone centroid only if the model has no geometry.
      */
     public static Vector3f pivot(BedrockGunModel model) {
-        BedrockPart override = model.getNode(PIVOT_NODE);
-        if (override != null) return toPivotSpace(override, new Vector3f());
+        Matrix4f override = findNode(model, PIVOT_NODE);
+        if (override != null) return override.transformPosition(new Vector3f());
         Bounds box = bounds(model);
         if (box.min() != null) return new Vector3f(box.min()).add(box.max()).mul(0.5f);
         return mountBoneCentroid(model);
@@ -158,35 +160,60 @@ public final class RefitOrbit {
     /** A bounding box in pivot space (blocks); {@code min}/{@code max} are {@code null} when there was no geometry. */
     public record Bounds(Vector3f min, Vector3f max) {}
 
+    // ---- walking the model -------------------------------------------------------------------------------------
+    //
+    // Pivot space is the input space of TaC:Z's positioning matrix M (applied as T(0,1.5,0)·M·T(0,-1.5,0)); the model
+    // render adds no transform of its own, and TaC:Z's positioning inverse for a bone is G⁻¹·T(0,1.5,0) (G = the rest
+    // bone chain), so a point L in a bone's frame sits at T(0,-1.5,0)·G·L in pivot space.
+    //
+    // The walk goes DOWN the children lists with the traversal parent's transform — exactly how TaC:Z renders —
+    // rather than up via getParent(): the loader attaches the extra bone it creates for a per-cube rotation with
+    // addChild, which never sets `parent`, so walking up treated every rotated cube as a root (it lost all its
+    // parents' offsets and gained the root's 1.5-block shift — the "box far too tall / past the stock" bug).
+
+    /** Local transform of a bone at rest: {@code T(pos/16) · Rz · Ry · Rx}, as {@code translateAndRotateAndScale}. */
+    private static Matrix4f restLocal(BedrockPart part) {
+        return new Matrix4f()
+                .translate(part.x / 16f, part.y / 16f, part.z / 16f)
+                .rotate(Axis.ZP.rotation(part.zRot))
+                .rotate(Axis.YP.rotation(part.yRot))
+                .rotate(Axis.XP.rotation(part.xRot));
+    }
+
+    private static Matrix4f rootFrame() {
+        return new Matrix4f().translate(0f, -1.5f, 0f);
+    }
+
     private static Bounds computeBounds(BedrockGunModel model) {
         Vector3f min = new Vector3f(Float.POSITIVE_INFINITY);
         Vector3f max = new Vector3f(Float.NEGATIVE_INFINITY);
         List<BedrockPart> roots = ((BedrockModel) model).getShouldRender();
         if (roots != null) {
-            for (BedrockPart root : roots) accumulateBounds(root, min, max);
+            for (BedrockPart root : roots) accumulateBounds(root, rootFrame(), min, max);
         }
         return min.x <= max.x ? new Bounds(min, max) : new Bounds(null, null);
     }
 
     /**
-     * Grows the box by every corner of every cube in {@code part}'s visible subtree. Cube bounds are local to their
-     * bone, in pixels; the corners are mapped into pivot space through the bone's rest transform.
+     * Grows the box by every corner of every cube in {@code part}'s visible subtree ({@code parentFrame} = the
+     * parent's pivot-space transform). Cube bounds are local to their bone, in pixels.
      *
-     * <p>Mirrors {@code FunctionalBedrockPart.render}: a node TaC:Z hooks runs its hook first; if the hook returns a
-     * renderer, that renderer draws <em>instead of</em> the node's cubes and children (the {@code lefthand_pos} /
-     * {@code righthand_pos} arm placeholders, attachment {@code _pos} slots, muzzle flash) — counting those stretched
-     * the box well above the gun — so the node is skipped. If it returns nothing (handguards, mags, sights: the hook
-     * only toggles {@code visible}), the node is measured normally. Calling the hook here is what TaC:Z does every
-     * frame anyway.
+     * <p>Left out, like the renderer leaves them out: the hand anchors' placeholder arm cubes (by name — TaC:Z hides
+     * the hands in the refit screen, so their hook doesn't report itself there); a hooked node whose hook returns a
+     * renderer ({@code FunctionalBedrockPart.render} then draws that <em>instead of</em> the node's cubes and
+     * children — attachment slots, muzzle flash); and hidden parts. A hook that returns nothing (handguards, mags,
+     * sights) only toggles {@code visible}, so the node is measured normally — calling it is what TaC:Z does every
+     * frame.
      */
-    private static void accumulateBounds(BedrockPart part, Vector3f min, Vector3f max) {
+    private static void accumulateBounds(BedrockPart part, Matrix4f parentFrame, Vector3f min, Vector3f max) {
+        if (part.name != null && HAND_NODES.contains(part.name)) return;
         if (part instanceof FunctionalBedrockPart functional && functional.functionalRenderer != null
                 && functional.functionalRenderer.apply(part) != null) {
             return;
         }
         if (!part.visible) return;
-        if (part.cubes != null && !part.cubes.isEmpty()) {
-            Matrix4f toPivot = pivotSpaceTransform(part);
+        Matrix4f frame = new Matrix4f(parentFrame).mul(restLocal(part));
+        if (part.cubes != null) {
             Vector3f corner = new Vector3f();
             for (BedrockCube cube : part.cubes) {
                 float[] b = cubeBounds(cube);
@@ -194,14 +221,14 @@ public final class RefitOrbit {
                 for (int i = 0; i < 8; i++) {
                     corner.set((i & 1) == 0 ? b[0] : b[3], (i & 2) == 0 ? b[1] : b[4], (i & 4) == 0 ? b[2] : b[5])
                             .div(16f);
-                    Vector3f p = toPivot.transformPosition(new Vector3f(corner));
+                    Vector3f p = frame.transformPosition(new Vector3f(corner));
                     min.min(p);
                     max.max(p);
                 }
             }
         }
         if (part.children != null) {
-            for (BedrockPart child : part.children) accumulateBounds(child, min, max);
+            for (BedrockPart child : part.children) accumulateBounds(child, frame, min, max);
         }
     }
 
@@ -216,36 +243,41 @@ public final class RefitOrbit {
         return null;
     }
 
+    /** The pivot-space transform of the first bone named {@code name} (found walking down), or {@code null}. */
+    private static Matrix4f findNode(BedrockGunModel model, String name) {
+        List<BedrockPart> roots = ((BedrockModel) model).getShouldRender();
+        if (roots == null) return null;
+        for (BedrockPart root : roots) {
+            Matrix4f found = findNode(root, rootFrame(), name);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static Matrix4f findNode(BedrockPart part, Matrix4f parentFrame, String name) {
+        Matrix4f frame = new Matrix4f(parentFrame).mul(restLocal(part));
+        if (name.equals(part.name)) return frame;
+        if (part.children != null) {
+            for (BedrockPart child : part.children) {
+                Matrix4f found = findNode(child, frame, name);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     /** Centroid of the gun's attachment mount bones ({@code <type>_pos}) — fallback for a model with no cubes. */
     private static Vector3f mountBoneCentroid(BedrockGunModel model) {
         Vector3f sum = new Vector3f();
         int count = 0;
         for (AttachmentType type : AttachmentType.values()) {
             if (type == AttachmentType.NONE) continue;
-            BedrockPart node = model.getNode(type.name().toLowerCase() + "_pos");
+            Matrix4f node = findNode(model, type.name().toLowerCase() + "_pos");
             if (node == null) continue;
-            sum.add(toPivotSpace(node, new Vector3f()));
+            sum.add(node.transformPosition(new Vector3f()));
             count++;
         }
         return count > 0 ? sum.div(count) : new Vector3f();
     }
-
-    /**
-     * Maps a point in {@code bone}'s local frame (blocks) into pivot space (the input space of TaC:Z's positioning
-     * matrix M, which it applies as {@code T(0,1.5,0)·M·T(0,-1.5,0)}). The model render adds no transform of its own
-     * ({@code BedrockModel.render} just walks the bones), so the render chain to bone X is its rest bone chain G, and
-     * TaC:Z's positioning inverse for X is exactly {@code A = G⁻¹·T(0,1.5,0)} (it inverts each bone and folds the 1.5
-     * into the root). A local point L renders at {@code T(1.5)·M·T(-1.5)·G·L = T(1.5)·M·A⁻¹·L} — so in pivot space it
-     * is {@code A⁻¹·L}. (The 1.5 there, plus the renderer's outer {@code translate(0,1.5,0)} + 180° roll, is what
-     * lands an aimed bone on the camera.)
-     */
-    private static Vector3f toPivotSpace(BedrockPart bone, Vector3f local) {
-        return pivotSpaceTransform(bone).transformPosition(local);
-    }
-
-    private static Matrix4f pivotSpaceTransform(BedrockPart bone) {
-        List<BedrockPart> path = new ArrayList<>();
-        RailAim.appendNodePath(bone, path);
-        return RailAim.positioningNodeInverse(path).invert();
-    }
 }
+

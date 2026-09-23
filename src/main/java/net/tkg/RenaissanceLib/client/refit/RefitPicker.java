@@ -48,8 +48,9 @@ import java.util.List;
 
 /**
  * The attachment picker of the interactive refit screen: the options for the selected slot as sub-cards (icon +
- * name) in rows just below the selected slot's card — flipping above it near the bottom of the screen — with a
- * square unload tile left of the first row when the slot has something installed.
+ * name) in a single column just below the selected slot's card — flipping above it near the bottom of the screen —
+ * with a square unload tile left of the first option when the slot has something installed. Its footprint
+ * ({@link #occupiedRect()}) is what the other cards move out of.
  *
  * <p>For a <b>TaC:Z slot</b> it reuses TaC:Z's own list widgets: TaC:Z still builds the options
  * ({@code InventoryAttachmentSlot} — install-on-click, paging, tooltips, the beta's variant/slot-adapter buttons and
@@ -64,7 +65,8 @@ import java.util.List;
  */
 @OnlyIn(Dist.CLIENT)
 public final class RefitPicker {
-    private static final int SUB_W = 104, SUB_H = 20, GAP = 3, BELOW = 6, MARGIN = 6, MAX_PER_ROW = 4;
+    /** Options stack in a single column under the card (user's layout). */
+    private static final int SUB_W = 104, SUB_H = 20, GAP = 3, BELOW = 6, MARGIN = 6, MAX_PER_ROW = 1;
     private static final int ACCENT = 0xFFD040;
     /** TaC:Z's variant / slot-adapter button size (beta) — its "Show Diagrams" toggle is the same class, bigger. */
     private static final int VARIANT_W = 78, VARIANT_H = 12;
@@ -99,6 +101,16 @@ public final class RefitPicker {
 
     private long lastInteract = 0L;
 
+    /** Screen area the picker covers this frame {x, y, w, h} (for the cards to keep clear of), or null. */
+    @Nullable
+    private float[] occupied;
+
+    /** The area the picker covered last frame — other cards move out of it ({@link RefitCallouts}). */
+    @Nullable
+    public float[] occupiedRect() {
+        return occupied;
+    }
+
     // ---- layout ------------------------------------------------------------------------------------------------
 
     /** Lay out the picker for {@code selected} under its card. Call each frame after the cards' layout. */
@@ -110,6 +122,7 @@ public final class RefitPicker {
         nativeUnload = null;
         showUnload = false;
         laserPath = null;
+        occupied = null;
 
         float[] card = selected == null ? null : callouts.cardRect(selected);
         boolean usable = card != null && Float.isFinite(card[0]) && Float.isFinite(card[1]);
@@ -171,11 +184,20 @@ public final class RefitPicker {
             pages.get(i).setY(i == 0 ? g.y0 : g.y0 + g.blockH - 8);
         }
         int ey = g.y0 + g.blockH + GAP;
+        int extrasW = 0;
         for (AbstractWidget w : extras) {
             w.setX(g.x0);
             w.setY(ey);
             ey += w.getHeight() + GAP;
+            extrasW = Math.max(extrasW, w.getWidth());
         }
+        occupy(g, Math.max(g.blockW, extrasW) + (pages.isEmpty() ? 0 : GAP + 18), ey - GAP);
+    }
+
+    /** Record the picker's footprint: from the unload tile (if any) to {@code width} past the column, down to {@code bottom}. */
+    private void occupy(Grid g, int width, int bottom) {
+        int left = showUnload ? unloadX : g.x0;
+        occupied = new float[]{left, g.y0, g.x0 + width - left, Math.max(bottom, g.y0 + g.blockH) - g.y0};
     }
 
     private void layoutOwn(LocalPlayer player, ItemStack gun, RefitSlot slot, float[] card) {
@@ -192,10 +214,15 @@ public final class RefitPicker {
                     font.plainSubstrByWidth(stack.getHoverName().getString(), SUB_W - 26)));
         }
         placeCommon(g, indices.isEmpty() && installed.isEmpty(), !installed.isEmpty());
+        int bottom = g.y0 + g.blockH;
+        int width = g.blockW;
         if (laserPath != null) {
             laserX = g.x0;
             laserY = g.y0 + g.blockH + GAP + 10; // below the label
+            bottom = laserY + SLIDER_H + 6 + SLIDER_H + 2;
+            width = Math.max(width, SLIDER_W + 2);
         }
+        occupy(g, width, bottom);
     }
 
     /** Unload tile position (left of the first row) and the empty note. */

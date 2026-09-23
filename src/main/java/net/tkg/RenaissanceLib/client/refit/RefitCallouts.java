@@ -96,13 +96,17 @@ public final class RefitCallouts {
     private long lastLayoutNanos = 0L;
     @Nullable
     private RefitSlot selected;
+    /** Screen area the other cards move out of — the selected card's option list {x, y, w, h} — or null. */
+    @Nullable
+    private float[] keepClear;
 
     /**
      * Recompute cards and layout for this frame ({@code selected} = the focused slot, or {@code null} in the
      * overview). Call once per screen render, before {@link #draw}.
      */
-    public void layout(@Nullable RefitSlot selected) {
+    public void layout(@Nullable RefitSlot selected, @Nullable float[] keepClear) {
         this.selected = selected;
+        this.keepClear = keepClear;
         visible.clear();
         Minecraft mc = Minecraft.getInstance();
         BedrockGunModel model = RefitProjection.model();
@@ -244,11 +248,45 @@ public final class RefitCallouts {
             boolean vertical = entry.getKey() == Side.LEFT || entry.getKey() == Side.RIGHT;
             spread(entry.getValue(), vertical, vertical ? screenH : screenW);
         }
+        // Cards under the selected card's option list move out of it, then the sides re-space.
+        if (keepClear != null && moveOutOf(keepClear, screenW, screenH)) {
+            for (Map.Entry<Side, List<Card>> entry : bySide.entrySet()) {
+                boolean vertical = entry.getKey() == Side.LEFT || entry.getKey() == Side.RIGHT;
+                spread(entry.getValue(), vertical, vertical ? screenH : screenW);
+            }
+        }
         for (Card card : visible) {
             if (card.docked) continue;
             card.targetX = clamp(card.targetX, SCREEN_MARGIN, screenW - SCREEN_MARGIN - card.w);
             card.targetY = clamp(card.targetY, SCREEN_MARGIN, screenH - SCREEN_MARGIN - CARD_H);
         }
+    }
+
+    /**
+     * Push every on-gun card (except the selected one — the list hangs from it) that overlaps {@code rect} out of it
+     * by the shortest way that stays on screen: left, right, up or down. Returns whether anything moved.
+     */
+    private boolean moveOutOf(float[] rect, float screenW, float screenH) {
+        float rx = rect[0] - SPACING, ry = rect[1] - SPACING, rr = rect[0] + rect[2] + SPACING,
+                rb = rect[1] + rect[3] + SPACING;
+        boolean moved = false;
+        for (Card card : visible) {
+            if (card.docked || card.slot.equals(selected)) continue;
+            float x = card.targetX, y = card.targetY, r = x + card.w, b = y + CARD_H;
+            if (r <= rx || x >= rr || b <= ry || y >= rb) continue; // clear already
+            float toLeft = r - rx, toRight = rr - x, toUp = b - ry, toDown = rb - y;
+            float best = Float.POSITIVE_INFINITY;
+            float nx = x, ny = y;
+            if (rx - card.w >= SCREEN_MARGIN && toLeft < best) { best = toLeft; nx = rx - card.w; ny = y; }
+            if (rr + card.w <= screenW - SCREEN_MARGIN && toRight < best) { best = toRight; nx = rr; ny = y; }
+            if (ry - CARD_H >= SCREEN_MARGIN && toUp < best) { best = toUp; nx = x; ny = ry - CARD_H; }
+            if (rb + CARD_H <= screenH - SCREEN_MARGIN && toDown < best) { best = toDown; nx = x; ny = rb; }
+            if (best == Float.POSITIVE_INFINITY) continue; // nowhere on screen to go — leave it
+            card.targetX = nx;
+            card.targetY = ny;
+            moved = true;
+        }
+        return moved;
     }
 
     private static float strength(Side side, float nx, float ny) {

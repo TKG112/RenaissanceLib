@@ -169,7 +169,8 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         // Keep the focus honest: TaC:Z's view moved elsewhere, or the focused card vanished (e.g. its rail host or
         // the underbarrel was removed) — back to the overview.
         if (selected != null && RefitTransform.getCurrentTransformType() != selected.cameraType()) selected = null;
-        callouts.layout(selected);
+        // Cards keep clear of the option list (last frame's footprint — the list hangs from the selected card).
+        callouts.layout(selected, selected == null ? null : picker.occupiedRect());
         if (selected != null && !callouts.has(selected)) {
             selected = null;
             if (RefitTransform.changeRefitScreenView(AttachmentType.NONE)) init();

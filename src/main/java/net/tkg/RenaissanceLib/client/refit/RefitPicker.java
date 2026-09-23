@@ -75,7 +75,11 @@ public final class RefitPicker {
     private static final int OFF_SCREEN = -1000;
 
     /** A TaC:Z option widget laid out as a sub-card. */
-    private record NativeOption(InventoryAttachmentSlot widget, int x, int y, String name) {}
+    private record NativeOption(InventoryAttachmentSlot widget, int x, int y, ItemStack stack, String name) {
+        boolean contains(double mx, double my) {
+            return inRect(mx, my, x, y, SUB_W, SUB_H);
+        }
+    }
 
     /** One of our options: an inventory stack, installed via the selected slot's message. */
     private record OwnOption(int inventoryIndex, ItemStack stack, int x, int y, String name) {}
@@ -166,12 +170,13 @@ public final class RefitPicker {
         for (int i = 0; i < slots.size(); i++) {
             InventoryAttachmentSlot widget = slots.get(i);
             int x = g.cellX(i), y = g.cellY(i);
+            // TaC:Z's button stays its own 18x18 icon (it stretches its frame across its width, so widening it
+            // breaks the texture); clicks on the rest of the sub-card are routed to it in click().
             widget.setX(x + 1);
             widget.setY(y + 1);
-            widget.setWidth(SUB_W - 2); // the whole sub-card is clickable
             ItemStack stack = TaczCompat.inventorySlotStack(widget);
             String name = stack.isEmpty() ? "" : stack.getHoverName().getString();
-            nativeOptions.add(new NativeOption(widget, x, y, font.plainSubstrByWidth(name, SUB_W - 26)));
+            nativeOptions.add(new NativeOption(widget, x, y, stack, font.plainSubstrByWidth(name, SUB_W - 26)));
         }
         placeCommon(g, slots.isEmpty(), unload != null);
         if (unload != null) {
@@ -361,6 +366,15 @@ public final class RefitPicker {
             }
             return true;
         }
+        // TaC:Z options: a click on the icon itself already went to TaC:Z's button (the screen tries widgets
+        // first); anywhere else on the sub-card presses the same button.
+        for (NativeOption o : nativeOptions) {
+            if (o.contains(mx, my)) {
+                clickSound();
+                o.widget().onPress();
+                return true;
+            }
+        }
         for (OwnOption o : ownOptions) {
             if (inRect(mx, my, o.x(), o.y(), SUB_W, SUB_H)) {
                 if (ownSlot != null && ready()) {
@@ -450,7 +464,7 @@ public final class RefitPicker {
     /** Sub-card frames (and our own options' icons), under TaC:Z's widgets. */
     public void drawBackgrounds(GuiGraphics graphics, int mouseX, int mouseY) {
         for (NativeOption o : nativeOptions) {
-            frame(graphics, o.x(), o.y(), SUB_W, SUB_H, o.widget().isMouseOver(mouseX, mouseY));
+            frame(graphics, o.x(), o.y(), SUB_W, SUB_H, o.contains(mouseX, mouseY));
         }
         for (OwnOption o : ownOptions) {
             frame(graphics, o.x(), o.y(), SUB_W, SUB_H, inRect(mouseX, mouseY, o.x(), o.y(), SUB_W, SUB_H));
@@ -471,10 +485,14 @@ public final class RefitPicker {
     /** Names beside the icons, over TaC:Z's widgets; our options' tooltips. */
     public void drawLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         Font font = Minecraft.getInstance().font;
+        ItemStack tooltip = null;
         for (NativeOption o : nativeOptions) {
-            boolean hover = o.widget().isMouseOver(mouseX, mouseY);
+            boolean hover = o.contains(mouseX, mouseY);
+            // Over the icon TaC:Z's button draws its own tooltip; over the rest of the sub-card, we do.
+            if (hover && !o.widget().isMouseOver(mouseX, mouseY) && !o.stack().isEmpty()) tooltip = o.stack();
             graphics.drawString(font, o.name(), o.x() + 23, o.y() + 6, hover ? 0xFF000000 | ACCENT : 0xFFFFFFFF, false);
         }
+        if (tooltip != null) graphics.renderTooltip(font, tooltip, mouseX, mouseY);
         OwnOption hovered = null;
         for (OwnOption o : ownOptions) {
             boolean hover = inRect(mouseX, mouseY, o.x(), o.y(), SUB_W, SUB_H);

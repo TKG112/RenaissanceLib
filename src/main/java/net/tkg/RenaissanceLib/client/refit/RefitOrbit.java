@@ -3,6 +3,7 @@ package net.tkg.RenaissanceLib.client.refit;
 import com.mojang.math.Axis;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockGunModel;
+import com.tacz.guns.client.model.FunctionalBedrockPart;
 import com.tacz.guns.client.model.bedrock.BedrockCube;
 import com.tacz.guns.client.model.bedrock.BedrockCubeBox;
 import com.tacz.guns.client.model.bedrock.BedrockCubePerFace;
@@ -138,8 +139,19 @@ public final class RefitOrbit {
     /**
      * Grows the box by every corner of every cube in {@code part}'s visible subtree. Cube bounds are local to their
      * bone, in pixels; the corners are mapped into pivot space through the bone's rest transform.
+     *
+     * <p>Mirrors {@code FunctionalBedrockPart.render}: a node TaC:Z hooks runs its hook first; if the hook returns a
+     * renderer, that renderer draws <em>instead of</em> the node's cubes and children (the {@code lefthand_pos} /
+     * {@code righthand_pos} arm placeholders, attachment {@code _pos} slots, muzzle flash) — counting those stretched
+     * the box well above the gun — so the node is skipped. If it returns nothing (handguards, mags, sights: the hook
+     * only toggles {@code visible}), the node is measured normally. Calling the hook here is what TaC:Z does every
+     * frame anyway.
      */
     private static void accumulateBounds(BedrockPart part, Vector3f min, Vector3f max) {
+        if (part instanceof FunctionalBedrockPart functional && functional.functionalRenderer != null
+                && functional.functionalRenderer.apply(part) != null) {
+            return;
+        }
         if (!part.visible) return;
         if (part.cubes != null && !part.cubes.isEmpty()) {
             Matrix4f toPivot = pivotSpaceTransform(part);

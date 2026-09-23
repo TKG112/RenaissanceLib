@@ -70,6 +70,21 @@ public final class UnderbarrelAnimator {
         shellReload = false;
     }
 
+    /**
+     * True while the underbarrel is playing a reload (single clip or shell-by-shell sequence) or inspect clip —
+     * the underbarrel counterparts of the actions TaC:Z's state machine plays on the host gun's main track, which
+     * take the gun out of its crouch "slide" pose. Read by {@code GunAnimationStateContextMixin}.
+     */
+    public static boolean isReloadOrInspectPlaying(ItemStack underbarrel) {
+        double elapsed = (System.currentTimeMillis() - startMs) / 1000.0;
+        if (shellReload) return elapsed < shellTotal;
+        if (!currentAnim.startsWith(RELOAD) && !currentAnim.startsWith("inspect")) return false;
+        GunDisplay display = UnderbarrelClient.getUnderbarrelDisplay(underbarrel);
+        ResourceLocation animFile = display == null ? null : display.getAnimationLocation();
+        BedrockAnimation anim = animFile == null ? null : UnderbarrelAnimations.get(animFile, currentAnim);
+        return anim != null && !anim.isLoop() && elapsed < anim.getAnimationLength();
+    }
+
     /** The idle animation, resolving the gun-convention name ({@code static_idle}) then our {@code idle} fallback. */
     private static BedrockAnimation idleAnim(ResourceLocation animFile) {
         return firstAnim(animFile, IDLE_CANDIDATES);

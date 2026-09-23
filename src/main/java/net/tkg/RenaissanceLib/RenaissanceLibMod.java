@@ -92,6 +92,7 @@ public class RenaissanceLibMod {
                 @Override
                 protected void apply(Void v, ResourceManager rm, ProfilerFiller p) {
                     ShaderManager.clearCache();
+                    net.tkg.RenaissanceLib.client.refit.RefitBlur.close();
 
                     AttachmentAnimationManager.clearCache();
                 }

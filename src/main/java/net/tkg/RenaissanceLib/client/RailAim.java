@@ -168,7 +168,7 @@ public final class RailAim {
      * accumulated node-path transform, used to align the camera to an aim node. Replicated because that
      * method is private; kept byte-for-byte equivalent.
      */
-    private static Matrix4f positioningNodeInverse(@Nullable List<BedrockPart> nodePath) {
+    public static Matrix4f positioningNodeInverse(@Nullable List<BedrockPart> nodePath) {
         Matrix4f matrix = new Matrix4f();
         if (nodePath != null) {
             for (int i = nodePath.size() - 1; i >= 0; i--) {
@@ -222,7 +222,7 @@ public final class RailAim {
     }
 
     /** Appends the root-to-node bone chain (root first, node last), matching TaC:Z's path ordering. */
-    private static void appendNodePath(BedrockPart node, List<BedrockPart> out) {
+    public static void appendNodePath(BedrockPart node, List<BedrockPart> out) {
         Deque<BedrockPart> stack = new ArrayDeque<>();
         for (BedrockPart p = node; p != null; p = p.getParent()) {
             stack.push(p);

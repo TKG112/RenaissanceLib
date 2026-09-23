@@ -36,6 +36,9 @@
     "client.MinecraftMixin",
     "client.MouseHandlerMixin",
     "client.MouseHandlerSensitivityMixin",
+    "client.PostChainAccessor",
+    "client.RefitKeyMixin",
+    "client.RefitOrbitMixin",
     "client.ReloadKeyMixin",
     "client.ShootKeyMixin",
     "client.ZoomKeyMixin"

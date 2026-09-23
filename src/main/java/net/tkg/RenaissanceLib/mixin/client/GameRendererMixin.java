@@ -5,6 +5,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
 import net.tkg.RenaissanceLib.client.ScopeShaderRenderer;
 import net.tkg.RenaissanceLib.client.ShaderManager;
+import net.tkg.RenaissanceLib.client.refit.RefitBlur;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -28,6 +29,8 @@ public abstract class GameRendererMixin {
                                           Camera pActiveRenderInfo,
                                           float pPartialTicks,
                                           CallbackInfo ci) {
+        // Interactive refit screen: blur the world before the first-person gun is drawn over it.
+        RefitBlur.apply(pPartialTicks);
         if (ScopeShaderRenderer.useEndOfFramePath()) return; // Iris shaderpack: deferred to end-of-frame
         if (!ShaderManager.isShaderActive()) return;
         ScopeShaderRenderer.prepareForFrame(ShaderManager.getActiveShader(), pPartialTicks);

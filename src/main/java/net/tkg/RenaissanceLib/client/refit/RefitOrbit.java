@@ -3,6 +3,10 @@ package net.tkg.RenaissanceLib.client.refit;
 import com.mojang.math.Axis;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockGunModel;
+import com.tacz.guns.client.model.bedrock.BedrockCube;
+import com.tacz.guns.client.model.bedrock.BedrockCubeBox;
+import com.tacz.guns.client.model.bedrock.BedrockCubePerFace;
+import com.tacz.guns.client.model.bedrock.BedrockModel;
 import com.tacz.guns.client.model.bedrock.BedrockPart;
 import net.minecraft.util.Mth;
 import net.minecraftforge.api.distmarker.Dist;
@@ -14,6 +18,8 @@ import org.joml.Vector4f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * Turntable camera for the interactive refit screen: the player drags to spin the gun (yaw free, pitch clamped to
@@ -23,7 +29,7 @@ import java.util.List;
  */
 @OnlyIn(Dist.CLIENT)
 public final class RefitOrbit {
-    /** Pack-author override for the rotation centre; otherwise the centroid of the gun's attachment mount bones. */
+    /** Optional pack-author override for the rotation centre; otherwise the centre of the gun's bounding box. */
     private static final String PIVOT_NODE = "refit_pivot";
     private static final float MAX_PITCH = 90f;
     private static final float MIN_ZOOM = -1.5f;   // blocks away from the camera
@@ -102,32 +108,94 @@ public final class RefitOrbit {
         return out.mul(m);
     }
 
+    /** Geometric centre per gun model (rest pose) — models are rebuilt on resource reload, so weak keys expire them. */
+    private static final Map<BedrockGunModel, Vector3f> CENTRE_CACHE = new WeakHashMap<>();
+
     /**
-     * The gun's rotation centre in the positioning matrix's input space: the {@code refit_pivot} bone if the model
-     * has one, else the centroid of its attachment mount bones ({@code <type>_pos}), which brackets the gun from
-     * muzzle to stock and scope to grip. For a bone X, TaC:Z's positioning inverse A satisfies
-     * {@code T(1.5)·A·T(-1.5)·F = I} (F = model→bone), so the bone origin sits at {@code A⁻¹ · (0, -1.5, 0)}.
+     * The gun's rotation centre in the positioning matrix's input space: the {@code refit_pivot} bone if the pack
+     * defines one; otherwise the centre of the model's bounding box (its visible cubes), so every gun turns about
+     * its own middle with nothing to author; the mount-bone centroid only if the model has no geometry.
      */
     private static Vector3f pivot(BedrockGunModel model) {
         BedrockPart override = model.getNode(PIVOT_NODE);
-        if (override != null) return boneOrigin(override);
+        if (override != null) return toPivotSpace(override, new Vector3f());
+        return new Vector3f(CENTRE_CACHE.computeIfAbsent(model, RefitOrbit::computeCentre));
+    }
+
+    private static Vector3f computeCentre(BedrockGunModel model) {
+        Vector3f min = new Vector3f(Float.POSITIVE_INFINITY);
+        Vector3f max = new Vector3f(Float.NEGATIVE_INFINITY);
+        List<BedrockPart> roots = ((BedrockModel) model).getShouldRender();
+        if (roots != null) {
+            for (BedrockPart root : roots) accumulateBounds(root, min, max);
+        }
+        if (min.x <= max.x) return min.add(max).mul(0.5f);
+        return mountBoneCentroid(model);
+    }
+
+    /**
+     * Grows the box by every corner of every cube in {@code part}'s visible subtree. Cube bounds are local to their
+     * bone, in pixels; the corners are mapped into pivot space through the bone's rest transform.
+     */
+    private static void accumulateBounds(BedrockPart part, Vector3f min, Vector3f max) {
+        if (!part.visible) return;
+        if (part.cubes != null && !part.cubes.isEmpty()) {
+            Matrix4f toPivot = pivotSpaceTransform(part);
+            Vector3f corner = new Vector3f();
+            for (BedrockCube cube : part.cubes) {
+                float[] b = cubeBounds(cube);
+                if (b == null) continue;
+                for (int i = 0; i < 8; i++) {
+                    corner.set((i & 1) == 0 ? b[0] : b[3], (i & 2) == 0 ? b[1] : b[4], (i & 4) == 0 ? b[2] : b[5])
+                            .div(16f);
+                    Vector3f p = toPivot.transformPosition(new Vector3f(corner));
+                    min.min(p);
+                    max.max(p);
+                }
+            }
+        }
+        if (part.children != null) {
+            for (BedrockPart child : part.children) accumulateBounds(child, min, max);
+        }
+    }
+
+    /** {min x, min y, min z, max x, max y, max z} in pixels, for the cube shapes TaC:Z builds. */
+    private static float[] cubeBounds(BedrockCube cube) {
+        if (cube instanceof BedrockCubeBox box) {
+            return new float[]{box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ};
+        }
+        if (cube instanceof BedrockCubePerFace face) {
+            return new float[]{face.minX, face.minY, face.minZ, face.maxX, face.maxY, face.maxZ};
+        }
+        return null;
+    }
+
+    /** Centroid of the gun's attachment mount bones ({@code <type>_pos}) — fallback for a model with no cubes. */
+    private static Vector3f mountBoneCentroid(BedrockGunModel model) {
         Vector3f sum = new Vector3f();
         int count = 0;
         for (AttachmentType type : AttachmentType.values()) {
             if (type == AttachmentType.NONE) continue;
             BedrockPart node = model.getNode(type.name().toLowerCase() + "_pos");
             if (node == null) continue;
-            sum.add(boneOrigin(node));
+            sum.add(toPivotSpace(node, new Vector3f()));
             count++;
         }
         return count > 0 ? sum.div(count) : new Vector3f(0f, -1.5f, 0f);
     }
 
-    private static Vector3f boneOrigin(BedrockPart node) {
+    /**
+     * Maps a point in {@code bone}'s local frame (blocks) into pivot space. For a bone X, TaC:Z's positioning inverse
+     * A satisfies {@code T(1.5)·A·T(-1.5)·G = I} (G = the render chain to X's frame) — that's what aiming at X means —
+     * so a local point L lands at {@code A⁻¹ · (L - (0, 1.5, 0))}.
+     */
+    private static Vector3f toPivotSpace(BedrockPart bone, Vector3f local) {
+        return pivotSpaceTransform(bone).transformPosition(local);
+    }
+
+    private static Matrix4f pivotSpaceTransform(BedrockPart bone) {
         List<BedrockPart> path = new ArrayList<>();
-        RailAim.appendNodePath(node, path);
-        Vector4f o = new Vector4f(0f, -1.5f, 0f, 1f);
-        RailAim.positioningNodeInverse(path).invert().transform(o);
-        return new Vector3f(o.x, o.y, o.z);
+        RailAim.appendNodePath(bone, path);
+        return RailAim.positioningNodeInverse(path).invert().translate(0f, -1.5f, 0f);
     }
 }

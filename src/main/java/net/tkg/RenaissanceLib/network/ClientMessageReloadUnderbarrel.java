@@ -11,6 +11,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.PacketDistributor;
 import net.tkg.RenaissanceLib.RenaissanceLibMod;
 import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
@@ -81,6 +82,10 @@ public class ClientMessageReloadUnderbarrel {
         int lockTicks = UnderbarrelAmmo.lockTicks(gunItem, ubData, current);
         UnderbarrelAmmo.set(gunItem, current + consumed);
         UnderbarrelAmmo.startReload(gunItem, level, feedTicks, lockTicks, current);
+
+        // Nearby players see the 3rd-person reload body animation (the shooter already played its own).
+        NetworkHandler.CHANNEL.send(PacketDistributor.TRACKING_ENTITY.with(() -> player),
+                new ServerMessageUnderbarrelReload(player.getId()));
     }
 
     /**

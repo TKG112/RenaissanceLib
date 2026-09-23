@@ -67,5 +67,9 @@ public final class NetworkHandler {
                 ServerMessageUnderbarrelSound::encode,
                 ServerMessageUnderbarrelSound::decode,
                 ServerMessageUnderbarrelSound::handle);
+        CHANNEL.registerMessage(id++, ServerMessageUnderbarrelReload.class,
+                ServerMessageUnderbarrelReload::encode,
+                ServerMessageUnderbarrelReload::decode,
+                ServerMessageUnderbarrelReload::handle);
     }
 }

@@ -116,9 +116,16 @@ public final class RailAim {
             Matrix4f ubAim = UnderbarrelAim.aimMatrix(model, stack);
             if (ubAim != null) {
                 if (ubWeight >= 1f) return ubAim;
-                Matrix4f blended = new Matrix4f();
-                MathUtil.applyMatrixLerp(host, ubAim, blended, ubWeight);
-                return blended;
+                // Blend the sight POSES (the inverses), not the aim matrices: an aim matrix's translation is the
+                // sight position rotated by the sight angle, so lerping it while slerping a differing angle (e.g. a
+                // launcher's pitched ladder sight) swings the gun on an arc. On the poses the eye travels straight
+                // from one sight to the other while the angle turns. applyMatrixLerp moves its RESULT from the
+                // `from` pose toward `to`, so the result must start as `from`.
+                Matrix4f fromPose = new Matrix4f(host).invert();
+                Matrix4f toPose = new Matrix4f(ubAim).invert();
+                Matrix4f blended = new Matrix4f(fromPose);
+                MathUtil.applyMatrixLerp(fromPose, toPose, blended, ubWeight);
+                return blended.invert();
             }
         }
         return host;

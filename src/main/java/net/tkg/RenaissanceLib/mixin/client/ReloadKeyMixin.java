@@ -15,6 +15,7 @@ import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAmmo;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAnimator;
+import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelPlayerAnimation;
 import net.tkg.RenaissanceLib.network.ClientMessageReloadUnderbarrel;
 import net.tkg.RenaissanceLib.network.NetworkHandler;
 import org.lwjgl.glfw.GLFW;
@@ -71,6 +72,8 @@ public class ReloadKeyMixin {
 
         NetworkHandler.CHANNEL.sendToServer(new ClientMessageReloadUnderbarrel());
         UnderbarrelAnimator.triggerReload(gun, Underbarrel.getInstalledUnderbarrel(gun), ubData);
+        // 3rd-person body reload animation (straightens the crouch cant, like a gun's own reload).
+        UnderbarrelPlayerAnimation.playReload(player);
 
         // Shooter's own reload sound (borrows TaC:Z's M320 reload, like the fire path borrows its shot sound).
         float pitch = 0.95f + player.getRandom().nextFloat() * 0.1f;

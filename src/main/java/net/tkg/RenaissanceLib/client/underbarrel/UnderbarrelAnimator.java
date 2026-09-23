@@ -61,9 +61,6 @@ public final class UnderbarrelAnimator {
     private static double shellEndLen;
     private static double shellTotal;
 
-    /** Wall-clock end of the reload animation currently playing (0 = none) — see {@link #isReloadPlaying}. */
-    private static long reloadEndMs = 0L;
-
     private UnderbarrelAnimator() {}
 
     /** Trigger a one-shot clip ({@code shoot} / single-clip {@code reload}). */
@@ -71,16 +68,6 @@ public final class UnderbarrelAnimator {
         currentAnim = name;
         startMs = System.currentTimeMillis();
         shellReload = false;
-        reloadEndMs = 0L; // any other clip interrupts a reload; triggerReload re-arms it after this
-    }
-
-    /**
-     * True while the underbarrel's reload animation is still playing (single clip or the shell-by-shell
-     * sequence). Used to make the host gun's state machine treat the player as standing during the reload
-     * ({@code GunAnimationStateContextMixin}), the way a gun's own reload overrides a crouch pose.
-     */
-    public static boolean isReloadPlaying() {
-        return reloadEndMs != 0L && System.currentTimeMillis() < reloadEndMs;
     }
 
     /** The idle animation, resolving the gun-convention name ({@code static_idle}) then our {@code idle} fallback. */
@@ -125,19 +112,12 @@ public final class UnderbarrelAnimator {
         if (animFile != null && manual) {
             double durationSec = Math.max(0, UnderbarrelAmmo.feedTicks(gun, ubData, current)) / 20.0;
             if (beginShellReload(animFile, empty, durationSec)) {
-                reloadEndMs = startMs + (long) (shellTotal * 1000.0);
                 return;
             }
         }
         // Magazine reload: prefer the gun-convention clip for the state (reload_empty / reload_tactical),
         // falling back to our simple `reload`.
-        String clip = firstName(animFile, empty ? RELOAD_EMPTY_CANDIDATES : RELOAD_TACTICAL_CANDIDATES);
-        trigger(clip);
-        // How long the reload reads as "playing": the clip's own length, else (no clip) the reload lockout.
-        BedrockAnimation anim = animFile == null ? null : UnderbarrelAnimations.get(animFile, clip);
-        double lengthSec = anim != null ? anim.getAnimationLength()
-                : (ubData != null && gun != null ? UnderbarrelAmmo.lockTicks(gun, ubData, current) / 20.0 : 0.0);
-        reloadEndMs = lengthSec > 0 ? startMs + (long) (lengthSec * 1000.0) : 0L;
+        trigger(firstName(animFile, empty ? RELOAD_EMPTY_CANDIDATES : RELOAD_TACTICAL_CANDIDATES));
     }
 
     /**

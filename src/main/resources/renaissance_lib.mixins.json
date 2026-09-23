@@ -26,7 +26,6 @@
     "client.FireSelectKeyMixin",
     "client.FirstPersonRenderGunEventMixin",
     "client.FirstPersonRenderGunEventAimMixin",
-    "client.GunAnimationStateContextMixin",
     "client.InspectKeyMixin",
     "client.GameRendererMixin",
     "client.GunHudOverlayMixin",

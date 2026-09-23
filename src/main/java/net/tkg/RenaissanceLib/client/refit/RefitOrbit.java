@@ -16,8 +16,10 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
 
@@ -159,6 +161,25 @@ public final class RefitOrbit {
 
     /** A bounding box in pivot space (blocks); {@code min}/{@code max} are {@code null} when there was no geometry. */
     public record Bounds(Vector3f min, Vector3f max) {}
+
+    /** Slot mount-bone positions per gun model (rest pose); an empty Optional = the model has no bone for it. */
+    private static final Map<BedrockGunModel, Map<AttachmentType, Optional<Vector3f>>> ANCHOR_CACHE =
+            new WeakHashMap<>();
+
+    /**
+     * Where a slot mounts on the gun, in pivot space: the origin of its {@code <type>_pos} bone (the same bone TaC:Z
+     * renders that slot's attachment at), or {@code null} if the model has none. Rest pose — the gun barely animates
+     * in the refit screen.
+     */
+    public static Vector3f slotAnchor(BedrockGunModel model, AttachmentType type) {
+        Optional<Vector3f> anchor = ANCHOR_CACHE
+                .computeIfAbsent(model, m -> new EnumMap<>(AttachmentType.class))
+                .computeIfAbsent(type, t -> {
+                    Matrix4f node = findNode(model, t.name().toLowerCase() + "_pos");
+                    return Optional.ofNullable(node == null ? null : node.transformPosition(new Vector3f()));
+                });
+        return anchor.map(Vector3f::new).orElse(null);
+    }
 
     // ---- walking the model -------------------------------------------------------------------------------------
     //

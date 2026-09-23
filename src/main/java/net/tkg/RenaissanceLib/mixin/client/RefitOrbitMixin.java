@@ -7,8 +7,8 @@ import com.tacz.guns.client.model.BedrockGunModel;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.client.refit.InteractiveRefitScreen;
-import net.tkg.RenaissanceLib.client.refit.RefitDebug;
 import net.tkg.RenaissanceLib.client.refit.RefitOrbit;
+import net.tkg.RenaissanceLib.client.refit.RefitProjection;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -40,12 +40,15 @@ public abstract class RefitOrbitMixin {
         return RefitOrbit.apply(matrix, model, refitOpeningProgress);
     }
 
-    /** Debug overlay (P in the refit screen): capture the projected pivot + bounding box once the gun is positioned. */
+    /**
+     * Once the gun is positioned, capture the gun→screen projection ({@link RefitProjection}) that the slot callouts
+     * and the debug overlay place themselves with.
+     */
     @Inject(method = "applyFirstPersonPositioningTransform", at = @At("TAIL"), remap = false)
-    private static void renaissance$refitDebugCapture(CallbackInfo ci,
-                                                      @Local(argsOnly = true) PoseStack poseStack,
-                                                      @Local(argsOnly = true) BedrockGunModel model) {
-        if (!RefitDebug.isEnabled() || !InteractiveRefitScreen.isOpenOrClosing()) return;
-        RefitDebug.capture(poseStack, model);
+    private static void renaissance$refitProjectionCapture(CallbackInfo ci,
+                                                           @Local(argsOnly = true) PoseStack poseStack,
+                                                           @Local(argsOnly = true) BedrockGunModel model) {
+        if (!InteractiveRefitScreen.isOpenOrClosing()) return;
+        RefitProjection.capture(poseStack, model);
     }
 }

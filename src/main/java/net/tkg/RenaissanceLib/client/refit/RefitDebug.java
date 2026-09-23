@@ -3,27 +3,30 @@ package net.tkg.RenaissanceLib.client.refit;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.tacz.guns.api.item.IGun;
+import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockGunModel;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Debug overlay for the refit turntable (toggle with P in the interactive refit screen): the pivot the gun turns
- * about, and the bounding box it's derived from, drawn as a wireframe that turns with the gun.
- *
- * <p>How: when TaC:Z has positioned the first-person gun ({@code RefitOrbitMixin}, at the end of
- * {@code applyFirstPersonPositioningTransform}), the pose there plus the first-person projection map pivot-space
- * points to the screen; we project the pivot and the box's 8 corners, and the screen draws them after the GUI.
- * The same projection is what the floating slot cards will use (stage 2).
+ * Debug overlay for the refit screen (toggle with P): the pivot the gun turns about (red cross), the bounding box it
+ * comes from (cyan wireframe), and — stage 2 of the interactive refit screen — every slot the gun allows, as a dot
+ * on its mount bone with a leader line out to a label placed away from the gun's centre (dimmed when the part is on
+ * the far side). Slots the gun allows but has no mount bone for are listed in a dock. All positions come from
+ * {@link RefitProjection}, so they turn with the gun.
  */
 @OnlyIn(Dist.CLIENT)
 public final class RefitDebug {
@@ -31,14 +34,10 @@ public final class RefitDebug {
             {0, 1}, {2, 3}, {4, 5}, {6, 7},  // along X
             {0, 2}, {1, 3}, {4, 6}, {5, 7},  // along Y
             {0, 4}, {1, 5}, {2, 6}, {3, 7}}; // along Z
+    /** How far a slot label sits out from its mount point, in GUI pixels. */
+    private static final float LABEL_DISTANCE = 55f;
 
     private static boolean enabled = false;
-
-    // Last captured frame (GUI-scaled screen coordinates; NaN = behind the camera).
-    private static final float[] cornerX = new float[8], cornerY = new float[8];
-    private static float pivotX = Float.NaN, pivotY = Float.NaN;
-    private static boolean hasBox = false, override = false;
-    private static final Vector3f boxSizePx = new Vector3f();
 
     private RefitDebug() {}
 
@@ -50,50 +49,44 @@ public final class RefitDebug {
         enabled = !enabled;
     }
 
-    /**
-     * Capture the projected pivot + box. {@code poseStack} is TaC:Z's pose at the end of the positioning method,
-     * i.e. {@code pre · T(0,1.5,0) · M · T(0,-1.5,0)}; a pivot-space point p renders at {@code pose · T(0,1.5,0) · p}.
-     */
-    public static void capture(PoseStack poseStack, BedrockGunModel model) {
-        if (!enabled || model == null) return;
-        Matrix4f toClip = new Matrix4f(RenderSystem.getProjectionMatrix())
-                .mul(poseStack.last().pose())
-                .translate(0f, 1.5f, 0f);
+    private record Anchor(AttachmentType type, RefitProjection.Point point, boolean farSide) {}
 
-        Vector3f pivot = RefitOrbit.pivot(model);
-        float[] p = project(toClip, pivot);
-        pivotX = p[0];
-        pivotY = p[1];
-        override = RefitOrbit.hasPivotOverride(model);
-
-        RefitOrbit.Bounds box = RefitOrbit.bounds(model);
-        hasBox = box.min() != null;
-        if (hasBox) {
-            Vector3f min = box.min(), max = box.max();
-            boxSizePx.set(max).sub(min).mul(16f);
-            for (int i = 0; i < 8; i++) {
-                Vector3f c = new Vector3f((i & 1) == 0 ? min.x : max.x, (i & 2) == 0 ? min.y : max.y,
-                        (i & 4) == 0 ? min.z : max.z);
-                float[] s = project(toClip, c);
-                cornerX[i] = s[0];
-                cornerY[i] = s[1];
-            }
-        }
-    }
-
-    /** Pivot-space point → GUI-scaled screen coordinates ({NaN, NaN} if behind the camera). */
-    private static float[] project(Matrix4f toClip, Vector3f point) {
-        Vector4f clip = toClip.transform(new Vector4f(point, 1f));
-        if (clip.w <= 1e-4f) return new float[]{Float.NaN, Float.NaN};
-        var window = Minecraft.getInstance().getWindow();
-        float x = (clip.x / clip.w * 0.5f + 0.5f) * window.getGuiScaledWidth();
-        float y = (0.5f - clip.y / clip.w * 0.5f) * window.getGuiScaledHeight();
-        return new float[]{x, y};
-    }
-
-    /** Draw the last captured pivot + box over the screen. */
     public static void draw(GuiGraphics graphics) {
         if (!enabled) return;
+        BedrockGunModel model = RefitProjection.model();
+        if (model == null) return;
+        Font font = Minecraft.getInstance().font;
+
+        RefitProjection.Point pivot = RefitProjection.project(RefitOrbit.pivot(model));
+        RefitOrbit.Bounds box = RefitOrbit.bounds(model);
+        RefitProjection.Point[] corners = new RefitProjection.Point[8];
+        if (box.min() != null) {
+            Vector3f min = box.min(), max = box.max();
+            for (int i = 0; i < 8; i++) {
+                corners[i] = RefitProjection.project(new Vector3f((i & 1) == 0 ? min.x : max.x,
+                        (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z));
+            }
+        }
+
+        // Slots the held gun allows: on-gun anchors, or the dock when the model has no mount bone for them.
+        List<Anchor> anchors = new ArrayList<>();
+        List<AttachmentType> docked = new ArrayList<>();
+        ItemStack gun = Minecraft.getInstance().player == null ? ItemStack.EMPTY
+                : Minecraft.getInstance().player.getMainHandItem();
+        IGun iGun = IGun.getIGunOrNull(gun);
+        if (iGun != null) {
+            for (AttachmentType type : AttachmentType.values()) {
+                if (type == AttachmentType.NONE || !iGun.allowAttachmentType(gun, type)) continue;
+                RefitProjection.Point p = RefitProjection.project(RefitOrbit.slotAnchor(model, type));
+                if (p == null) {
+                    docked.add(type);
+                } else {
+                    anchors.add(new Anchor(type, p, pivot != null && p.depth() > pivot.depth() + 0.01f));
+                }
+            }
+        }
+
+        // Lines: box, pivot cross, slot leader lines.
         Matrix4f pose = graphics.pose().last().pose();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.enableBlend();
@@ -101,31 +94,81 @@ public final class RefitDebug {
         RenderSystem.disableDepthTest();
         BufferBuilder buf = Tesselator.getInstance().getBuilder();
         buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-        if (hasBox) {
-            for (int[] e : EDGES) {
-                line(buf, pose, cornerX[e[0]], cornerY[e[0]], cornerX[e[1]], cornerY[e[1]], 0x40, 0xC0, 0xFF);
-            }
+        for (int[] e : EDGES) {
+            RefitProjection.Point a = corners[e[0]], b = corners[e[1]];
+            if (a != null && b != null) line(buf, pose, a.x(), a.y(), b.x(), b.y(), 0x40, 0xC0, 0xFF, 160);
         }
-        if (!Float.isNaN(pivotX)) {
-            float r = 6f;
-            line(buf, pose, pivotX - r, pivotY, pivotX + r, pivotY, 0xFF, 0x40, 0x40);
-            line(buf, pose, pivotX, pivotY - r, pivotX, pivotY + r, 0xFF, 0x40, 0x40);
+        if (pivot != null) {
+            line(buf, pose, pivot.x() - 6, pivot.y(), pivot.x() + 6, pivot.y(), 0xFF, 0x40, 0x40, 255);
+            line(buf, pose, pivot.x(), pivot.y() - 6, pivot.x(), pivot.y() + 6, 0xFF, 0x40, 0x40, 255);
+        }
+        float[][] labelAt = new float[anchors.size()][];
+        for (int i = 0; i < anchors.size(); i++) {
+            Anchor a = anchors.get(i);
+            labelAt[i] = labelPosition(a.point(), pivot);
+            int alpha = a.farSide() ? 110 : 255;
+            line(buf, pose, a.point().x(), a.point().y(), labelAt[i][0], labelAt[i][1], 0xFF, 0xD0, 0x40, alpha);
         }
         Tesselator.getInstance().end();
         RenderSystem.enableDepthTest();
 
-        var font = Minecraft.getInstance().font;
-        String what = override ? "pivot: refit_pivot bone" : "pivot: bounding-box centre";
-        String size = hasBox ? String.format(" | box %.1f x %.1f x %.1f px", boxSizePx.x, boxSizePx.y, boxSizePx.z)
-                : " | no box (mount-bone fallback)";
-        graphics.drawString(font, "[P] refit debug  " + what + size, 4, 4, 0xFFFFFF, true);
-        if (!Float.isNaN(pivotX)) graphics.fill((int) pivotX - 1, (int) pivotY - 1, (int) pivotX + 2, (int) pivotY + 2, 0xFFFF4040);
+        // Dots and labels.
+        for (int i = 0; i < anchors.size(); i++) {
+            Anchor a = anchors.get(i);
+            int alpha = a.farSide() ? 0x70 : 0xFF;
+            int px = Math.round(a.point().x()), py = Math.round(a.point().y());
+            graphics.fill(px - 2, py - 2, px + 2, py + 2, (alpha << 24) | 0xFFD040);
+            String label = slotName(a.type());
+            int w = font.width(label);
+            int lx = Math.round(labelAt[i][0]) - (labelAt[i][0] < a.point().x() ? w + 3 : -3);
+            int ly = Math.round(labelAt[i][1]) - 4;
+            graphics.fill(lx - 2, ly - 2, lx + w + 2, ly + 10, (Math.min(alpha, 0xB0) << 24));
+            graphics.drawString(font, label, lx, ly, (alpha << 24) | 0xFFFFFF, false);
+        }
+        if (!docked.isEmpty()) {
+            int y = Minecraft.getInstance().getWindow().getGuiScaledHeight() - 14 - docked.size() * 11;
+            graphics.drawString(font, "No mount bone (dock):", 6, y, 0xFFAAAAAA, true);
+            for (AttachmentType type : docked) {
+                y += 11;
+                graphics.drawString(font, "- " + slotName(type), 10, y, 0xFFFFD040, true);
+            }
+        }
+        if (pivot != null) {
+            graphics.fill(Math.round(pivot.x()) - 1, Math.round(pivot.y()) - 1,
+                    Math.round(pivot.x()) + 2, Math.round(pivot.y()) + 2, 0xFFFF4040);
+        }
+
+        String what = RefitOrbit.hasPivotOverride(model) ? "pivot: refit_pivot bone" : "pivot: bounding-box centre";
+        String size = box.min() == null ? " | no box (mount-bone fallback)"
+                : String.format(" | box %.1f x %.1f x %.1f px", (box.max().x - box.min().x) * 16f,
+                (box.max().y - box.min().y) * 16f, (box.max().z - box.min().z) * 16f);
+        graphics.drawString(font, "[P] refit debug  " + what + size + " | slots " + anchors.size() + " on gun, "
+                + docked.size() + " docked", 4, 4, 0xFFFFFF, true);
+    }
+
+    /** A label position pushed out from the mount point, away from the gun's projected centre. */
+    private static float[] labelPosition(RefitProjection.Point anchor, RefitProjection.Point centre) {
+        float dx = centre == null ? 1f : anchor.x() - centre.x();
+        float dy = centre == null ? 0f : anchor.y() - centre.y();
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-3f) {
+            dx = 0f;
+            dy = -1f;
+        } else {
+            dx /= len;
+            dy /= len;
+        }
+        return new float[]{anchor.x() + dx * LABEL_DISTANCE, anchor.y() + dy * LABEL_DISTANCE};
+    }
+
+    private static String slotName(AttachmentType type) {
+        String n = type.name().toLowerCase().replace('_', ' ');
+        return Character.toUpperCase(n.charAt(0)) + n.substring(1);
     }
 
     private static void line(BufferBuilder buf, Matrix4f pose, float x0, float y0, float x1, float y1,
-                             int r, int g, int b) {
-        if (Float.isNaN(x0) || Float.isNaN(x1)) return;
-        buf.vertex(pose, x0, y0, 0f).color(r, g, b, 255).endVertex();
-        buf.vertex(pose, x1, y1, 0f).color(r, g, b, 255).endVertex();
+                             int r, int g, int b, int a) {
+        buf.vertex(pose, x0, y0, 0f).color(r, g, b, a).endVertex();
+        buf.vertex(pose, x1, y1, 0f).color(r, g, b, a).endVertex();
     }
 }

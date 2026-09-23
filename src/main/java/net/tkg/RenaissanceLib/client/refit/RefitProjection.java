@@ -32,8 +32,11 @@ public final class RefitProjection {
     public record Point(float x, float y, float depth) {}
 
     public static void capture(PoseStack poseStack, BedrockGunModel gunModel) {
-        toView.set(poseStack.last().pose()).translate(0f, 1.5f, 0f);
-        toClip.set(RenderSystem.getProjectionMatrix()).mul(toView);
+        Matrix4f view = new Matrix4f(poseStack.last().pose()).translate(0f, 1.5f, 0f);
+        Matrix4f clip = new Matrix4f(RenderSystem.getProjectionMatrix()).mul(view);
+        if (!view.isFinite() || !clip.isFinite()) return; // keep the last good frame
+        toView.set(view);
+        toClip.set(clip);
         model = gunModel;
     }
 
@@ -43,16 +46,20 @@ public final class RefitProjection {
         return model;
     }
 
-    /** Project a pivot-space point; {@code null} if it's behind the camera or nothing's been captured yet. */
+    /**
+     * Project a pivot-space point; {@code null} if it's behind the camera, nothing's been captured yet, or the maths
+     * came out non-finite (a transient bad frame must never reach the layout — a NaN there sticks).
+     */
     @Nullable
     public static Point project(Vector3f pivotSpace) {
-        if (model == null || pivotSpace == null) return null;
+        if (model == null || pivotSpace == null || !pivotSpace.isFinite()) return null;
         Vector4f clip = toClip.transform(new Vector4f(pivotSpace, 1f));
-        if (clip.w <= 1e-4f) return null;
+        if (!(clip.w > 1e-4f)) return null;  // also rejects NaN
         var window = Minecraft.getInstance().getWindow();
         float x = (clip.x / clip.w * 0.5f + 0.5f) * window.getGuiScaledWidth();
         float y = (0.5f - clip.y / clip.w * 0.5f) * window.getGuiScaledHeight();
         float depth = -toView.transformPosition(new Vector3f(pivotSpace)).z;
+        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(depth)) return null;
         return new Point(x, y, depth);
     }
 }

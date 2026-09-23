@@ -84,6 +84,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // TaC:Z's widgets first — the picker's options sit over the (faded) cards of other slots.
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.clickUnload(mouseX, mouseY)) return true;
         AttachmentType card = callouts.slotAt(mouseX, mouseY);
         if (card != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             selectSlot(card);

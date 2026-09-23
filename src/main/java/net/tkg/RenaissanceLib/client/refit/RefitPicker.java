@@ -1,5 +1,6 @@
 package net.tkg.RenaissanceLib.client.refit;
 
+import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.components.refit.InventoryAttachmentSlot;
@@ -27,9 +28,9 @@ import java.util.List;
  * <p>It <em>reuses TaC:Z's own list widgets</em> rather than rebuilding the list: TaC:Z still builds the options
  * ({@code InventoryAttachmentSlot}, with its install-on-click, paging, tooltips, the beta's variant/slot-adapter
  * buttons and virtual entries, and our {@code item_link} entries), and this only moves them into place every frame,
- * widens each option to its sub-card, and draws the card frame and name around it. The unload button goes on the
- * selected card's corner; page arrows beside the rows; the beta's variant/adapter buttons and the laser colour
- * sliders underneath.
+ * widens each option to its sub-card, and draws the card frame and name around it. The unload button becomes a
+ * square tile left of the first row (only when the slot has something installed); page arrows beside the rows; the
+ * beta's variant/adapter buttons and the laser colour sliders underneath. TaC:Z's stats panel stays where it is.
  */
 @OnlyIn(Dist.CLIENT)
 public final class RefitPicker {
@@ -38,30 +39,47 @@ public final class RefitPicker {
 
     private record Option(InventoryAttachmentSlot widget, int x, int y, String name) {}
 
+    /** TaC:Z's variant / slot-adapter button size (beta) — its "Show Diagrams" toggle is the same class, bigger. */
+    private static final int VARIANT_W = 78, VARIANT_H = 12;
+
     private final List<Option> options = new ArrayList<>();
     private boolean emptyNote = false;
     private int noteX, noteY;
+    /** The unload tile (square, left of the first row) when the slot has an attachment; null otherwise. */
+    private RefitUnloadButton unload;
+    private int unloadX, unloadY;
 
     /** Position TaC:Z's list widgets under the selected slot's card. Call each frame after the cards' layout. */
     public void layout(List<? extends GuiEventListener> children, RefitCallouts callouts) {
         options.clear();
         emptyNote = false;
+        unload = null;
         AttachmentType selected = RefitTransform.getCurrentTransformType();
         if (selected == AttachmentType.NONE) return;
         float[] card = callouts.cardRect(selected);
-        if (card == null) return;
+        if (card == null || !Float.isFinite(card[0]) || !Float.isFinite(card[1])) return;
 
         List<InventoryAttachmentSlot> slots = new ArrayList<>();
         List<RefitTurnPageButton> pages = new ArrayList<>();
         List<AbstractWidget> extras = new ArrayList<>();
-        RefitUnloadButton unload = null;
         for (GuiEventListener child : children) {
             if (child instanceof InventoryAttachmentSlot s) slots.add(s);
             else if (child instanceof RefitTurnPageButton p) pages.add(p);
             else if (child instanceof RefitUnloadButton u) unload = u;
             else if (child instanceof ForgeSlider slider) extras.add(slider);            // laser colour
-            else if (child instanceof AbstractWidget w
-                    && "FlatColorButton".equals(w.getClass().getSimpleName())) extras.add(w); // beta variant/adapter
+            else if (child instanceof AbstractWidget w                                   // beta variant/adapter —
+                    && "FlatColorButton".equals(w.getClass().getSimpleName())          // not the (same-class,
+                    && w.getWidth() == VARIANT_W && w.getHeight() == VARIANT_H) {       // bigger) diagrams toggle,
+                extras.add(w);                                                          // which the stats panel
+            }                                                                           // is drawn relative to
+        }
+        // Unload only when the slot has something installed; otherwise park TaC:Z's button off-screen.
+        var player = Minecraft.getInstance().player;
+        IGun iGun = player == null ? null : IGun.getIGunOrNull(player.getMainHandItem());
+        if (unload != null && (iGun == null || iGun.getAttachment(player.getMainHandItem(), selected).isEmpty())) {
+            unload.setX(-100);
+            unload.setY(-100);
+            unload = null;
         }
 
         var window = Minecraft.getInstance().getWindow();
@@ -78,7 +96,8 @@ public final class RefitPicker {
         int cardX = Math.round(card[0]), cardY = Math.round(card[1]), cardW = Math.round(card[2]),
                 cardH = Math.round(card[3]);
         int pageW = pages.isEmpty() ? 0 : 18 + GAP;
-        int x0 = clamp(cardX + cardW / 2 - blockW / 2, MARGIN, screenW - MARGIN - blockW - pageW);
+        int unloadW = unload == null ? 0 : SUB_H + GAP;   // square unload tile left of the first row
+        int x0 = clamp(cardX + cardW / 2 - blockW / 2, MARGIN + unloadW, screenW - MARGIN - blockW - pageW);
         int y0 = cardY + cardH + BELOW;
         if (y0 + totalH > screenH - MARGIN) y0 = cardY - BELOW - totalH;   // no room below → flip above
         y0 = clamp(y0, MARGIN, screenH - MARGIN - totalH);
@@ -106,10 +125,13 @@ public final class RefitPicker {
             pages.get(i).setX(x0 + blockW + GAP);
             pages.get(i).setY(i == 0 ? y0 : y0 + blockH - 8);
         }
-        // Unload on the selected card's top-right corner.
+        // Unload: a square tile left of the first row; TaC:Z's 8x8 button sits centred in it (its icon + tooltip),
+        // and clicks anywhere on the tile are routed to it (unloadAt).
         if (unload != null) {
-            unload.setX(cardX + cardW - 9);
-            unload.setY(cardY + 1);
+            unloadX = x0 - GAP - SUB_H;
+            unloadY = y0;
+            unload.setX(unloadX + (SUB_H - 8) / 2);
+            unload.setY(unloadY + (SUB_H - 8) / 2);
         }
         // Variant / adapter buttons and laser sliders stacked under the options.
         int ey = y0 + blockH + GAP;
@@ -127,6 +149,18 @@ public final class RefitPicker {
             frame(graphics, o.x(), o.y(), SUB_W, SUB_H, hover);
         }
         if (emptyNote) frame(graphics, noteX, noteY, SUB_W + 40, SUB_H, false);
+        if (unload != null) frame(graphics, unloadX, unloadY, SUB_H, SUB_H, onUnloadTile(mouseX, mouseY));
+    }
+
+    private boolean onUnloadTile(double mx, double my) {
+        return unload != null && mx >= unloadX && mx < unloadX + SUB_H && my >= unloadY && my < unloadY + SUB_H;
+    }
+
+    /** A click on the unload tile (anywhere on it) unloads, via TaC:Z's own button. Returns true if handled. */
+    public boolean clickUnload(double mx, double my) {
+        if (!onUnloadTile(mx, my)) return false;
+        unload.onPress();
+        return true;
     }
 
     /** Names beside the icons, over TaC:Z's widgets. */

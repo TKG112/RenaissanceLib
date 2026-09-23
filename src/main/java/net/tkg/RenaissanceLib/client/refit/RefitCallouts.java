@@ -120,7 +120,7 @@ public final class RefitCallouts {
             for (int i = 0; i < 8; i++) {
                 RefitProjection.Point p = RefitProjection.project(new Vector3f((i & 1) == 0 ? min.x : max.x,
                         (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z));
-                if (p == null) continue;
+                if (p == null) continue; // project() already drops non-finite points
                 r[0] = Math.min(r[0], p.x());
                 r[1] = Math.min(r[1], p.y());
                 r[2] = Math.max(r[2], p.x());
@@ -233,7 +233,9 @@ public final class RefitCallouts {
         lastLayoutNanos = now;
         float alpha = 1f - (float) Math.exp(-dt / EASE_TAU);
         for (Card card : visible) {
-            if (!card.placed) {
+            if (!Float.isFinite(card.targetX) || !Float.isFinite(card.targetY)) continue; // never ease toward NaN
+            // A card that ever went non-finite would stay NaN under easing (and draw at 0,0) — snap it back.
+            if (!card.placed || !Float.isFinite(card.x) || !Float.isFinite(card.y)) {
                 card.x = card.targetX;
                 card.y = card.targetY;
                 card.placed = true;

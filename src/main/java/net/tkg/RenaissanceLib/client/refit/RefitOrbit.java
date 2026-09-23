@@ -129,7 +129,8 @@ public final class RefitOrbit {
                 .rotate(Axis.YP.rotationDegrees(y))
                 .translate(-c.x, -c.y, -c.z)
                 .translate(0f, 1.5f, 0f);
-        return out.mul(m);
+        out.mul(m);
+        return out.isFinite() ? out : m;
     }
 
     /** Bounding box per gun model (rest pose) — models are rebuilt on resource reload, so weak keys expire them. */

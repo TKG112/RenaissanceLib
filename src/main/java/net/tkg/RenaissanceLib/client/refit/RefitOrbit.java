@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 
 /**
  * Turntable camera for the interactive refit screen: the player drags to spin the gun (yaw free, pitch clamped to
@@ -168,8 +170,9 @@ public final class RefitOrbit {
 
     /**
      * Where a slot mounts on the gun, in pivot space: the origin of its {@code <type>_pos} bone (the same bone TaC:Z
-     * renders that slot's attachment at), or {@code null} if the model has none. Rest pose — the gun barely animates
-     * in the refit screen.
+     * renders that slot's attachment at). Without one, the extended-mag slot anchors on the magazine itself
+     * ({@link #magazineCentre}); other slots return {@code null} (docked). Rest pose — the gun barely animates in the
+     * refit screen.
      */
     public static Vector3f slotAnchor(BedrockGunModel model, AttachmentType type) {
         Optional<Vector3f> anchor = ANCHOR_CACHE
@@ -178,7 +181,76 @@ public final class RefitOrbit {
                     Matrix4f node = findNode(model, t.name().toLowerCase() + "_pos");
                     return Optional.ofNullable(node == null ? null : node.transformPosition(new Vector3f()));
                 });
-        return anchor.map(Vector3f::new).orElse(null);
+        if (anchor.isPresent()) return new Vector3f(anchor.get());
+        if (type == AttachmentType.EXTENDED_MAG) return magazineCentre(model);
+        return null;
+    }
+
+    /** TaC:Z's magazine variant bones — it shows exactly one, matching the installed extended mag level. */
+    private static final Set<String> MAG_VARIANT_NODES =
+            Set.of("mag_standard", "mag_extended_1", "mag_extended_2", "mag_extended_3");
+
+    /**
+     * Centre of the gun's magazine as currently shown — no default gun has an {@code extended_mag_pos} bone. In order:
+     * the visible one of TaC:Z's mag variant bones (so the anchor follows an installed extended mag); the
+     * {@code magazine} group; else the largest group with "mag" in its name, skipping release levers, bullets, hands
+     * and view/pos locators. Not cached: which variant is visible changes with the installed mag.
+     */
+    private static Vector3f magazineCentre(BedrockGunModel model) {
+        Bounds box = unionBounds(model, name -> MAG_VARIANT_NODES.contains(name));
+        if (box.min() == null) box = unionBounds(model, "magazine"::equals);
+        if (box.min() == null) box = largestBounds(model, name -> {
+            String n = name.toLowerCase();
+            return n.contains("mag") && !n.contains("release") && !n.contains("bullet") && !n.contains("hand")
+                    && !n.endsWith("_pos") && !n.endsWith("_view");
+        });
+        return box.min() == null ? null : new Vector3f(box.min()).add(box.max()).mul(0.5f);
+    }
+
+    /** Box around the visible geometry of every bone whose name matches (each matched subtree counted once). */
+    private static Bounds unionBounds(BedrockGunModel model, Predicate<String> nameMatches) {
+        Vector3f min = new Vector3f(Float.POSITIVE_INFINITY);
+        Vector3f max = new Vector3f(Float.NEGATIVE_INFINITY);
+        forEachMatch(model, nameMatches, (part, parentFrame) -> accumulateBounds(part, parentFrame, min, max));
+        return min.x <= max.x ? new Bounds(min, max) : new Bounds(null, null);
+    }
+
+    /** Box of the single matching bone whose visible geometry is largest (by volume). */
+    private static Bounds largestBounds(BedrockGunModel model, Predicate<String> nameMatches) {
+        Bounds[] best = {new Bounds(null, null)};
+        float[] bestVolume = {-1f};
+        forEachMatch(model, nameMatches, (part, parentFrame) -> {
+            Vector3f min = new Vector3f(Float.POSITIVE_INFINITY);
+            Vector3f max = new Vector3f(Float.NEGATIVE_INFINITY);
+            accumulateBounds(part, parentFrame, min, max);
+            if (min.x > max.x) return;
+            Vector3f size = new Vector3f(max).sub(min);
+            float volume = size.x * size.y * size.z;
+            if (volume > bestVolume[0]) {
+                bestVolume[0] = volume;
+                best[0] = new Bounds(min, max);
+            }
+        });
+        return best[0];
+    }
+
+    /** Walks down the model; for each bone whose name matches, hands it with its parent's frame and skips its subtree. */
+    private static void forEachMatch(BedrockGunModel model, Predicate<String> nameMatches,
+                                     BiConsumer<BedrockPart, Matrix4f> action) {
+        List<BedrockPart> roots = ((BedrockModel) model).getShouldRender();
+        if (roots == null) return;
+        for (BedrockPart root : roots) forEachMatch(root, rootFrame(), nameMatches, action);
+    }
+
+    private static void forEachMatch(BedrockPart part, Matrix4f parentFrame, Predicate<String> nameMatches,
+                                     BiConsumer<BedrockPart, Matrix4f> action) {
+        if (part.name != null && nameMatches.test(part.name)) {
+            action.accept(part, parentFrame);
+            return;
+        }
+        if (part.children == null) return;
+        Matrix4f frame = new Matrix4f(parentFrame).mul(restLocal(part));
+        for (BedrockPart child : part.children) forEachMatch(child, frame, nameMatches, action);
     }
 
     // ---- walking the model -------------------------------------------------------------------------------------

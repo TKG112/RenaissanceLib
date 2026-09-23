@@ -88,7 +88,9 @@ public final class RefitOrbit {
         float y = yaw * w, p = pitch * w, z = zoom * w;
         if (Math.abs(y) < 1e-3f && Math.abs(p) < 1e-3f && Math.abs(z) < 1e-4f) return m;
 
-        // Rotation centre in camera space: c = T(0,1.5,0) · m · pivot, pivot in m's input space.
+        // Rotation centre in the frame TaC:Z's positioning sits in: c = T(0,1.5,0) · m · pivot (pivot in m's input
+        // space). That frame is the camera's after the gun renderer's translate(0,1.5,0) + 180° roll, so its X/Y are
+        // the camera's flipped (drag directions below are as tuned in-game) and its Z is the camera's.
         Vector4f c4 = new Vector4f(pivot(model), 1f);
         new Matrix4f().translate(0f, 1.5f, 0f).mul(m).transform(c4);
         Vector3f c = new Vector3f(c4.x, c4.y, c4.z);
@@ -181,13 +183,17 @@ public final class RefitOrbit {
             sum.add(toPivotSpace(node, new Vector3f()));
             count++;
         }
-        return count > 0 ? sum.div(count) : new Vector3f(0f, -1.5f, 0f);
+        return count > 0 ? sum.div(count) : new Vector3f();
     }
 
     /**
-     * Maps a point in {@code bone}'s local frame (blocks) into pivot space. For a bone X, TaC:Z's positioning inverse
-     * A satisfies {@code T(1.5)·A·T(-1.5)·G = I} (G = the render chain to X's frame) — that's what aiming at X means —
-     * so a local point L lands at {@code A⁻¹ · (L - (0, 1.5, 0))}.
+     * Maps a point in {@code bone}'s local frame (blocks) into pivot space (the input space of TaC:Z's positioning
+     * matrix M, which it applies as {@code T(0,1.5,0)·M·T(0,-1.5,0)}). The model render adds no transform of its own
+     * ({@code BedrockModel.render} just walks the bones), so the render chain to bone X is its rest bone chain G, and
+     * TaC:Z's positioning inverse for X is exactly {@code A = G⁻¹·T(0,1.5,0)} (it inverts each bone and folds the 1.5
+     * into the root). A local point L renders at {@code T(1.5)·M·T(-1.5)·G·L = T(1.5)·M·A⁻¹·L} — so in pivot space it
+     * is {@code A⁻¹·L}. (The 1.5 there, plus the renderer's outer {@code translate(0,1.5,0)} + 180° roll, is what
+     * lands an aimed bone on the camera.)
      */
     private static Vector3f toPivotSpace(BedrockPart bone, Vector3f local) {
         return pivotSpaceTransform(bone).transformPosition(local);
@@ -196,6 +202,6 @@ public final class RefitOrbit {
     private static Matrix4f pivotSpaceTransform(BedrockPart bone) {
         List<BedrockPart> path = new ArrayList<>();
         RailAim.appendNodePath(bone, path);
-        return RailAim.positioningNodeInverse(path).invert().translate(0f, -1.5f, 0f);
+        return RailAim.positioningNodeInverse(path).invert();
     }
 }

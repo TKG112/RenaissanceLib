@@ -111,29 +111,43 @@ public final class RefitOrbit {
         return out.mul(m);
     }
 
-    /** Geometric centre per gun model (rest pose) — models are rebuilt on resource reload, so weak keys expire them. */
-    private static final Map<BedrockGunModel, Vector3f> CENTRE_CACHE = new WeakHashMap<>();
+    /** Bounding box per gun model (rest pose) — models are rebuilt on resource reload, so weak keys expire them. */
+    private static final Map<BedrockGunModel, Bounds> BOUNDS_CACHE = new WeakHashMap<>();
 
     /**
      * The gun's rotation centre in the positioning matrix's input space: the {@code refit_pivot} bone if the pack
      * defines one; otherwise the centre of the model's bounding box (its visible cubes), so every gun turns about
      * its own middle with nothing to author; the mount-bone centroid only if the model has no geometry.
      */
-    private static Vector3f pivot(BedrockGunModel model) {
+    public static Vector3f pivot(BedrockGunModel model) {
         BedrockPart override = model.getNode(PIVOT_NODE);
         if (override != null) return toPivotSpace(override, new Vector3f());
-        return new Vector3f(CENTRE_CACHE.computeIfAbsent(model, RefitOrbit::computeCentre));
+        Bounds box = bounds(model);
+        if (box.min() != null) return new Vector3f(box.min()).add(box.max()).mul(0.5f);
+        return mountBoneCentroid(model);
     }
 
-    private static Vector3f computeCentre(BedrockGunModel model) {
+    /** Whether the pivot comes from a pack-authored {@code refit_pivot} bone rather than the bounding box. */
+    public static boolean hasPivotOverride(BedrockGunModel model) {
+        return model.getNode(PIVOT_NODE) != null;
+    }
+
+    /** The gun's rest-pose bounding box in pivot space (cached per model); empty if it has no measurable cubes. */
+    public static Bounds bounds(BedrockGunModel model) {
+        return BOUNDS_CACHE.computeIfAbsent(model, RefitOrbit::computeBounds);
+    }
+
+    /** A bounding box in pivot space (blocks); {@code min}/{@code max} are {@code null} when there was no geometry. */
+    public record Bounds(Vector3f min, Vector3f max) {}
+
+    private static Bounds computeBounds(BedrockGunModel model) {
         Vector3f min = new Vector3f(Float.POSITIVE_INFINITY);
         Vector3f max = new Vector3f(Float.NEGATIVE_INFINITY);
         List<BedrockPart> roots = ((BedrockModel) model).getShouldRender();
         if (roots != null) {
             for (BedrockPart root : roots) accumulateBounds(root, min, max);
         }
-        if (min.x <= max.x) return min.add(max).mul(0.5f);
-        return mountBoneCentroid(model);
+        return min.x <= max.x ? new Bounds(min, max) : new Bounds(null, null);
     }
 
     /**

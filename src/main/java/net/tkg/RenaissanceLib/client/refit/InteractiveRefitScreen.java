@@ -3,6 +3,7 @@ package net.tkg.RenaissanceLib.client.refit;
 import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.GunRefitScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -90,6 +91,16 @@ public class InteractiveRefitScreen extends GunRefitScreen {
             RefitOrbit.reset(false);
             return true;
         }
+        if (keyCode == GLFW.GLFW_KEY_P) {
+            RefitDebug.toggle();
+            return true;
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+        RefitDebug.draw(graphics);
     }
 }

@@ -1,6 +1,9 @@
 package net.tkg.RenaissanceLib.client.refit;
 
+import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.GunRefitScreen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
@@ -18,12 +21,28 @@ import org.lwjgl.glfw.GLFW;
 public class InteractiveRefitScreen extends GunRefitScreen {
     private static final long DOUBLE_CLICK_MS = 300L;
 
+    /** Our screen was the last refit screen shown — its blur/orbit keep easing out after it closes. */
+    private static boolean lingering = false;
+
     private boolean orbiting = false;
     private long lastEmptyClickMs = 0L;
 
     public InteractiveRefitScreen() {
         super();
         RefitOrbit.reset(true); // every open starts from TaC:Z's default refit view (init() also runs on refresh)
+        lingering = true;
+    }
+
+    /**
+     * True while this screen is open, <em>and</em> after it closes until TaC:Z's refit closing transition
+     * ({@code RefitTransform.getOpeningProgress()}) has run back to 0 — so the blur and the orbit fade out with the
+     * camera instead of cutting off the moment the screen goes away. A plain TaC:Z refit screen ends it.
+     */
+    public static boolean isOpenOrClosing() {
+        Screen screen = Minecraft.getInstance().screen;
+        if (screen instanceof InteractiveRefitScreen) return true;
+        if (screen instanceof GunRefitScreen || RefitTransform.getOpeningProgress() <= 0f) lingering = false;
+        return lingering;
     }
 
     @Override

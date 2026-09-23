@@ -17,7 +17,8 @@ import org.lwjgl.opengl.GL11;
  * Blurs the world behind the interactive refit screen while the gun stays sharp: vanilla's two-pass blur post
  * chain runs on the main target after the world is drawn and <em>before</em> the first-person pass
  * ({@code GameRendererMixin}, at {@code renderItemInHand} HEAD) — the refit gun is the first-person model, drawn
- * next. The radius ramps with TaC:Z's refit opening progress so the blur fades in/out with the screen.
+ * next. The radius ramps with TaC:Z's refit opening progress so the blur fades in/out with the screen (including
+ * after it closes, while TaC:Z's closing transition runs — {@link InteractiveRefitScreen#isOpenOrClosing()}).
  *
  * <p>Skipped under an Iris/Oculus shader pack: the world isn't on the main target mid-frame there (the same reason
  * the scope post-shader uses its end-of-frame path).
@@ -35,7 +36,7 @@ public final class RefitBlur {
     /** Run the blur if the interactive refit screen is (or is still easing) open. Call before the hand pass. */
     public static void apply(float partialTick) {
         Minecraft mc = Minecraft.getInstance();
-        if (!(mc.screen instanceof InteractiveRefitScreen)) return;
+        if (!InteractiveRefitScreen.isOpenOrClosing()) return;
         if (IrisCompat.isShaderPackInUse()) return;
         float progress = RefitTransform.getOpeningProgress();
         if (progress <= 0f) return;
@@ -48,8 +49,11 @@ public final class RefitBlur {
         }
         blur.process(partialTick);
 
-        // Back to the main target with the state the hand pass expects.
+        // Back to the main target with the state the hand pass expects. The blur's last pass draws a full-screen
+        // quad into the main target that also writes DEPTH, after vanilla already cleared depth for the hand pass
+        // — so clear it again, or the first-person gun fails the depth test everywhere and vanishes.
         mc.getMainRenderTarget().bindWrite(true);
+        RenderSystem.clear(GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
         RenderSystem.depthFunc(GL11.GL_LEQUAL);

@@ -3,7 +3,6 @@ package net.tkg.RenaissanceLib.mixin.client;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.tacz.guns.client.event.FirstPersonRenderGunEvent;
 import com.tacz.guns.client.model.BedrockGunModel;
-import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.client.refit.InteractiveRefitScreen;
@@ -33,7 +32,7 @@ public abstract class RefitOrbitMixin {
     private static Matrix4f renaissance$refitOrbit(Matrix4f matrix,
                                                    @Local(argsOnly = true) BedrockGunModel model,
                                                    @Local(argsOnly = true, ordinal = 1) float refitOpeningProgress) {
-        if (!(Minecraft.getInstance().screen instanceof InteractiveRefitScreen)) return matrix;
+        if (!InteractiveRefitScreen.isOpenOrClosing()) return matrix;
         return RefitOrbit.apply(matrix, model, refitOpeningProgress);
     }
 }

@@ -84,6 +84,9 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         AttachmentType view = next == null ? AttachmentType.NONE : next.cameraType();
         if (RefitTransform.getCurrentTransformType() != view && !RefitTransform.changeRefitScreenView(view)) return;
         selected = next;
+        // Glide the player's rotation / zoom / pan back to neutral alongside TaC:Z's camera move, so the view lands
+        // on the slot's framing instead of on it plus whatever orbit was applied (the player can orbit again after).
+        RefitOrbit.reset(false);
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
         init();
     }

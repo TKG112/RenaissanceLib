@@ -108,14 +108,20 @@ public final class RailAim {
      */
     public static Matrix4f resolveAim(com.tacz.guns.client.model.BedrockGunModel model, ItemStack stack,
                                       List<BedrockPart> nodePath, Matrix4f original) {
-        if (UnderbarrelAim.isIronAimActive(stack)) {
+        Matrix4f host = ActiveOptic.hasMountedRailSight(stack) ? easedAimMatrix(nodePath, stack) : original;
+        // Underbarrel iron sight, blended in by the host<->underbarrel switch factor so the view glides between
+        // the two sights (with the support hand) instead of snapping.
+        float ubWeight = UnderbarrelAim.ironWeight(stack);
+        if (ubWeight > 0f) {
             Matrix4f ubAim = UnderbarrelAim.aimMatrix(model, stack);
-            if (ubAim != null) return ubAim;
+            if (ubAim != null) {
+                if (ubWeight >= 1f) return ubAim;
+                Matrix4f blended = new Matrix4f();
+                MathUtil.applyMatrixLerp(host, ubAim, blended, ubWeight);
+                return blended;
+            }
         }
-        if (ActiveOptic.hasMountedRailSight(stack)) {
-            return easedAimMatrix(nodePath, stack);
-        }
-        return original;
+        return host;
     }
 
     /** Persisted eased aim matrix while a rail sight is in play; reset when the cycle isn't combined. */

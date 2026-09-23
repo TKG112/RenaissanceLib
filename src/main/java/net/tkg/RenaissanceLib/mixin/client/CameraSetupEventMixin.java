@@ -3,6 +3,7 @@ package net.tkg.RenaissanceLib.mixin.client;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.client.event.CameraSetupEvent;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -29,11 +30,13 @@ public abstract class CameraSetupEventMixin {
             at = @At(value = "INVOKE",
                     target = "Lcom/tacz/guns/api/item/IGun;getAimingZoom(Lnet/minecraft/world/item/ItemStack;)F"))
     private static float renaissance$underbarrelAimZoom(IGun iGun, ItemStack stack) {
-        if (UnderbarrelAim.isIronAimActive(stack)) {
+        float hostZoom = iGun.getAimingZoom(stack);
+        float weight = UnderbarrelAim.ironWeight(stack);
+        if (weight > 0f) {
             float ubZoom = UnderbarrelAim.ironZoom(stack);
-            if (ubZoom > 0f) return ubZoom;
+            if (ubZoom > 0f) return Mth.lerp(weight, hostZoom, ubZoom);
         }
-        return iGun.getAimingZoom(stack);
+        return hostZoom;
     }
 
     /**
@@ -50,8 +53,9 @@ public abstract class CameraSetupEventMixin {
                                                         @Local(argsOnly = true) ViewportEvent.ComputeFov event) {
         if (!(event.getCamera().getEntity() instanceof LivingEntity living)) return aimedFov;
         ItemStack stack = living.getMainHandItem();
-        if (!UnderbarrelAim.isIronAimActive(stack)) return aimedFov;
+        float weight = UnderbarrelAim.ironWeight(stack);
+        if (weight <= 0f) return aimedFov;
         float ubFov = UnderbarrelAim.modelFov(stack);
-        return ubFov > 0f ? ubFov : aimedFov;
+        return ubFov > 0f ? Mth.lerp(weight, aimedFov, ubFov) : aimedFov;
     }
 }

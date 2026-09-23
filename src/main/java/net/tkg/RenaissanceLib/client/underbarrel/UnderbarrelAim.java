@@ -13,7 +13,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.compat.TaczCompat;
 import org.joml.Matrix4f;
@@ -54,17 +53,24 @@ public final class UnderbarrelAim {
 
     private UnderbarrelAim() {}
 
-    /** True when the underbarrel is the active weapon and it declares its own iron sights (an {@code iron_view}). */
-    public static boolean isIronAimActive(ItemStack gunItem) {
-        if (!ActiveWeapon.isUnderbarrelActive(gunItem)) return false;
+    /**
+     * How much the underbarrel's iron sight drives the aim, {@code 0..1}: the host↔underbarrel switch factor
+     * ({@link UnderbarrelTransition}, the same eased 0→1 the support hand rides) when an installed underbarrel
+     * declares its own iron sights (an {@code iron_view}), else 0. Callers blend host → underbarrel by it (aim
+     * matrix, zoom, model FOV), so switching weapons while aiming glides between the two sights instead of
+     * snapping.
+     */
+    public static float ironWeight(ItemStack gunItem) {
+        float t = UnderbarrelTransition.factor();
+        if (t <= 0f || !Underbarrel.hasUnderbarrel(gunItem)) return 0f;
         BedrockAttachmentModel model = underbarrelModel(gunItem);
-        return model != null && model.getNode(IRON_VIEW_NODE) != null;
+        return model != null && model.getNode(IRON_VIEW_NODE) != null ? t : 0f;
     }
 
     /**
-     * The aim-alignment matrix for the active underbarrel's iron sights, or {@code null} if unavailable (no
-     * iron sights, or the grip_pos / iron_view nodes can't be resolved) — in which case the caller keeps the host
-     * aim.
+     * The aim-alignment matrix for the installed underbarrel's iron sights (whether or not it's the active weapon
+     * — blending is the caller's job, see {@link #ironWeight}), or {@code null} if unavailable (no iron sights, or
+     * the grip_pos / iron_view nodes can't be resolved) — in which case the caller keeps the host aim.
      *
      * <p>This is the inverse of the exact chain the underbarrel is drawn with: the gun's {@code grip_pos} bone
      * chain, TaC:Z's attachment {@code -1.5} origin shift, TaC:Z's per-gun mount offset (beta slot adapter /
@@ -74,7 +80,7 @@ public final class UnderbarrelAim {
      */
     @Nullable
     public static Matrix4f aimMatrix(BedrockGunModel gunModel, ItemStack gunItem) {
-        if (gunModel == null || !ActiveWeapon.isUnderbarrelActive(gunItem)) return null;
+        if (gunModel == null || !Underbarrel.hasUnderbarrel(gunItem)) return null;
         BedrockAttachmentModel ubModel = underbarrelModel(gunItem);
         if (ubModel == null) return null;
         BedrockPart mountNode = gunModel.getNode(GRIP_MOUNT_NODE);

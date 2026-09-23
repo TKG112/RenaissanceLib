@@ -2,6 +2,7 @@
   "gui.renaissance_lib.gun_refit.property_diagrams.fire_mode": "Fire Modes",
   "gui.renaissance_lib.refit.empty": "Empty",
   "gui.renaissance_lib.refit.no_attachments": "No compatible attachments",
+  "gui.renaissance_lib.refit.underbarrel_slot": "UB %s",
 
   "gui.renaissance_lib.fire_mode.auto": "Auto",
   "gui.renaissance_lib.fire_mode.semi": "Semi",

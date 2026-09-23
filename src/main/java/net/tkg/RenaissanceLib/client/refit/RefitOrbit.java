@@ -337,12 +337,20 @@ public final class RefitOrbit {
         return null;
     }
 
-    /** The pivot-space transform of the first bone named {@code name} (found walking down), or {@code null}. */
-    private static Matrix4f findNode(BedrockGunModel model, String name) {
-        List<BedrockPart> roots = ((BedrockModel) model).getShouldRender();
+    /** The pivot-space transform of the gun's first bone named {@code name} (found walking down), or {@code null}. */
+    public static Matrix4f findNode(BedrockGunModel model, String name) {
+        return findNode(model, name, rootFrame());
+    }
+
+    /**
+     * The transform of {@code model}'s first bone named {@code name}, walking down from its roots placed at
+     * {@code rootFrame} — e.g. an attachment model hung off a gun bone ({@code RefitAnchors}). {@code null} if none.
+     */
+    public static Matrix4f findNode(BedrockModel model, String name, Matrix4f rootFrame) {
+        List<BedrockPart> roots = model == null ? null : model.getShouldRender();
         if (roots == null) return null;
         for (BedrockPart root : roots) {
-            Matrix4f found = findNode(root, rootFrame(), name);
+            Matrix4f found = findNode(root, rootFrame, name);
             if (found != null) return found;
         }
         return null;

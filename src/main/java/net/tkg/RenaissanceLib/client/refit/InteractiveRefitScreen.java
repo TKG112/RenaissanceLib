@@ -14,6 +14,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 /**
@@ -24,8 +25,10 @@ import java.util.List;
  *
  * <p>Adds the turntable camera ({@link RefitOrbit}) — drag on empty space to rotate, right-drag to move the gun
  * across the screen, scroll to zoom, double-click or R to reset — the blurred background ({@link RefitBlur}), the
- * floating slot cards ({@link RefitCallouts}, replacing TaC:Z's slot buttons; TaC:Z's attachment list for the
- * selected slot is kept for now), and a P-toggled pivot/bounding-box debug overlay ({@link RefitDebug}).
+ * floating cards ({@link RefitCallouts}) for TaC:Z's slots and ours (rail mounts, the underbarrel's own slots, the
+ * conversion kit — {@link RefitSlot}), replacing TaC:Z's slot buttons and our old refit-row overlays, with the
+ * selected card's options as sub-cards below it ({@link RefitPicker}), and a P-toggled pivot/bounding-box debug
+ * overlay ({@link RefitDebug}).
  */
 @OnlyIn(Dist.CLIENT)
 public class InteractiveRefitScreen extends GunRefitScreen {
@@ -36,6 +39,9 @@ public class InteractiveRefitScreen extends GunRefitScreen {
 
     private final RefitCallouts callouts = new RefitCallouts();
     private final RefitPicker picker = new RefitPicker();
+    /** The focused card (a TaC:Z slot or one of ours), or {@code null} in the overview. */
+    @Nullable
+    private RefitSlot selected;
     private boolean orbiting = false;
     private boolean panning = false;
     private long lastEmptyClickMs = 0L;
@@ -68,24 +74,26 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     }
 
     /**
-     * Select a slot like TaC:Z's slot button does: the camera glides to the slot's refit view and the screen rebuilds
-     * with that slot's attachment list; selecting the selected slot again goes back to the overview.
+     * Focus a card like TaC:Z's slot button does: the camera glides to the refit view of the native slot it lives on
+     * ({@link RefitSlot#cameraType()} — a rail mount frames its host, the underbarrel's slots the grip) and the screen
+     * rebuilds; focusing the focused card again goes back to the overview. For a TaC:Z slot, the rebuild is what fills
+     * TaC:Z's attachment list for it; for ours the picker draws the options.
      */
-    private void selectSlot(AttachmentType type) {
-        AttachmentType next = RefitTransform.getCurrentTransformType() == type ? AttachmentType.NONE : type;
-        if (RefitTransform.changeRefitScreenView(next)) {
-            Minecraft.getInstance().getSoundManager()
-                    .play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
-            init();
-        }
+    private void selectSlot(RefitSlot slot) {
+        RefitSlot next = slot.equals(selected) ? null : slot;
+        AttachmentType view = next == null ? AttachmentType.NONE : next.cameraType();
+        if (RefitTransform.getCurrentTransformType() != view && !RefitTransform.changeRefitScreenView(view)) return;
+        selected = next;
+        Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+        init();
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // TaC:Z's widgets first — the picker's options sit over the (faded) cards of other slots.
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.clickUnload(mouseX, mouseY)) return true;
-        AttachmentType card = callouts.slotAt(mouseX, mouseY);
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.click(mouseX, mouseY)) return true;
+        RefitSlot card = callouts.slotAt(mouseX, mouseY);
         if (card != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             selectSlot(card);
             return true;
@@ -110,6 +118,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.dragLaser(mouseX)) return true;
         if (orbiting && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             RefitOrbit.drag(dragX, dragY);
             return true;
@@ -123,7 +132,10 @@ public class InteractiveRefitScreen extends GunRefitScreen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) orbiting = false;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            orbiting = false;
+            picker.releaseLaser();
+        }
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) panning = false;
         return super.mouseReleased(mouseX, mouseY, button);
     }
@@ -154,8 +166,15 @@ public class InteractiveRefitScreen extends GunRefitScreen {
      */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        callouts.layout();
-        picker.layout(children(), callouts);
+        // Keep the focus honest: TaC:Z's view moved elsewhere, or the focused card vanished (e.g. its rail host or
+        // the underbarrel was removed) — back to the overview.
+        if (selected != null && RefitTransform.getCurrentTransformType() != selected.cameraType()) selected = null;
+        callouts.layout(selected);
+        if (selected != null && !callouts.has(selected)) {
+            selected = null;
+            if (RefitTransform.changeRefitScreenView(AttachmentType.NONE)) init();
+        }
+        picker.layout(children(), callouts, selected);
         callouts.draw(graphics, mouseX, mouseY);
         picker.drawBackgrounds(graphics, mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);

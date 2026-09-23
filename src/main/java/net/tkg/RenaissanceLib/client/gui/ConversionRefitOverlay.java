@@ -4,6 +4,7 @@ import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.GunRefitScreen;
+import net.tkg.RenaissanceLib.client.refit.InteractiveRefitScreen;
 import com.tacz.guns.client.sound.SoundPlayManager;
 import com.tacz.guns.sound.SoundManager;
 import net.minecraft.client.Minecraft;
@@ -96,7 +97,8 @@ public final class ConversionRefitOverlay {
 
     @SubscribeEvent
     public static void onRenderScreen(ScreenEvent.Render.Post event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen)) return;
+        // The interactive refit screen shows this slot as a card of its own (RefitCallouts / RefitPicker).
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || screen instanceof InteractiveRefitScreen) return;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
         ItemStack gunItem = player.getMainHandItem();
@@ -170,7 +172,7 @@ public final class ConversionRefitOverlay {
 
     @SubscribeEvent
     public static void onMouseClick(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen)) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || screen instanceof InteractiveRefitScreen) return;
         if (event.getButton() != 0) return;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
@@ -251,7 +253,7 @@ public final class ConversionRefitOverlay {
     }
 
     /** Inventory slot indices holding a conversion kit the current gun accepts (capped for the picker). */
-    private static List<Integer> collectInventoryKits(LocalPlayer player, ItemStack gunItem) {
+    public static List<Integer> collectInventoryKits(LocalPlayer player, ItemStack gunItem) {
         List<Integer> result = new ArrayList<>();
         Inventory inventory = player.getInventory();
         for (int i = 0; i < inventory.getContainerSize() && result.size() < MAX_PICKER; i++) {

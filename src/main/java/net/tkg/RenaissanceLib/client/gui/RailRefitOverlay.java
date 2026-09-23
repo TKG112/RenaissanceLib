@@ -6,6 +6,7 @@ import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.GunRefitScreen;
+import net.tkg.RenaissanceLib.client.refit.InteractiveRefitScreen;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import com.tacz.guns.client.resource.pojo.display.LaserConfig;
 import com.tacz.guns.client.sound.SoundPlayManager;
@@ -174,7 +175,7 @@ public final class RailRefitOverlay {
 
     @SubscribeEvent
     public static void onRenderScreen(ScreenEvent.Render.Post event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen)) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || event.getScreen() instanceof InteractiveRefitScreen) return;
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
@@ -289,7 +290,7 @@ public final class RailRefitOverlay {
         }
     }
 
-    private static Component railSlotName(List<RailsModifier.RailSlot> slots, int index) {
+    public static Component railSlotName(List<RailsModifier.RailSlot> slots, int index) {
         String type = (index >= 0 && index < slots.size()) ? slots.get(index).getType() : "generic";
         String key = "tooltip.renaissance_lib.rail." + type;
         if (I18n.exists(key)) {
@@ -302,7 +303,7 @@ public final class RailRefitOverlay {
 
     @SubscribeEvent
     public static void onMouseClick(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen)) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || event.getScreen() instanceof InteractiveRefitScreen) return;
         if (event.getButton() != 0) return;
 
         LocalPlayer player = Minecraft.getInstance().player;
@@ -417,7 +418,7 @@ public final class RailRefitOverlay {
     /** Ends a laser-slider drag and persists the chosen colour to the server. */
     @SubscribeEvent
     public static void onMouseRelease(ScreenEvent.MouseButtonReleased.Pre event) {
-        if (!(event.getScreen() instanceof GunRefitScreen)) return;
+        if (!(event.getScreen() instanceof GunRefitScreen) || event.getScreen() instanceof InteractiveRefitScreen) return;
         if (draggingSlider == -1) return;
         draggingSlider = -1;
         LocalPlayer player = Minecraft.getInstance().player;
@@ -589,7 +590,7 @@ public final class RailRefitOverlay {
     }
 
     /** Inventory slot indices holding an attachment accepted by a slot (with the given {@code allow}) on {@code hostType}. */
-    private static List<Integer> collectInventorySights(LocalPlayer player, List<String> allow, AttachmentType hostType) {
+    public static List<Integer> collectInventorySights(LocalPlayer player, List<String> allow, AttachmentType hostType) {
         List<Integer> result = new ArrayList<>();
         Inventory inventory = player.getInventory();
         for (int i = 0; i < inventory.getContainerSize() && result.size() < MAX_PICKER; i++) {

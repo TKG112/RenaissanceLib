@@ -7,9 +7,9 @@ import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
-import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.GunRefitScreen;
 import com.tacz.guns.client.model.BedrockGunModel;
+import com.tacz.guns.resource.pojo.data.gun.GunData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -18,6 +18,15 @@ import net.minecraft.client.resources.language.I18n;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.tkg.RenaissanceLib.attachment.ConversionStorage;
+import net.tkg.RenaissanceLib.attachment.MountPath;
+import net.tkg.RenaissanceLib.attachment.RailStorage;
+import net.tkg.RenaissanceLib.attachment.RailsModifier;
+import net.tkg.RenaissanceLib.attachment.ScopeRails;
+import net.tkg.RenaissanceLib.attachment.Underbarrel;
+import net.tkg.RenaissanceLib.attachment.UnderbarrelAttachments;
+import net.tkg.RenaissanceLib.client.gui.ConversionRefitOverlay;
+import net.tkg.RenaissanceLib.client.gui.RailRefitOverlay;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -25,17 +34,18 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The floating slot cards of the interactive refit screen (stage 3): one card per slot the gun allows, placed just
- * outside the gun on the side its part faces (scope above, muzzle/stock at the ends, grip/mag below), joined to the
- * part by a leader line from a dot on its mount point ({@link RefitOrbit#slotAnchor}, projected by
- * {@link RefitProjection}). Cards on a side push apart so they never overlap, glide instead of jumping as the gun
- * turns, and dim when their part is on the far side. Slots without a mount point stack in a dock, bottom-left.
- * Clicking a card selects the slot exactly like TaC:Z's slot button (camera to the slot's refit view + its
- * attachment list); clicking it again goes back to the overview.
+ * The floating slot cards of the interactive refit screen: one card per mount point — TaC:Z's slots the gun allows,
+ * plus ours ({@link RefitSlot}): every rail mount (nested ones too), the installed underbarrel's own slots and the
+ * conversion-kit slot, all visible at once (ours with a coloured edge). Each is placed just outside the gun on the
+ * side its part faces (scope above, muzzle/stock at the ends, grip/mag below), joined to the part by a leader line
+ * from a dot on its anchor ({@link RefitAnchors}, projected by {@link RefitProjection}). Cards on a side push apart
+ * so they never overlap, glide instead of jumping as the gun turns, and dim when their part is on the far side.
+ * Slots without an anchor stack in a dock, bottom-left. Selection lives in the screen; clicking is routed there.
  */
 @OnlyIn(Dist.CLIENT)
 public final class RefitCallouts {
@@ -51,8 +61,15 @@ public final class RefitCallouts {
 
     private enum Side { LEFT, RIGHT, TOP, BOTTOM }
 
+    /** Edge tints for our own slots (the colours their old refit rows used); 0 = a TaC:Z slot, no tint. */
+    private static final int TINT_RAIL = 0x66FF99, TINT_UNDERBARREL = 0xFFA500, TINT_CONVERSION = 0xFFD700;
+    /** Rail mounts nested deeper than this aren't carded (mirrors RefitAnchors). */
+    private static final int MAX_RAIL_DEPTH = 4;
+
     private static final class Card {
-        final AttachmentType type;
+        final RefitSlot slot;
+        AttachmentType iconType = AttachmentType.SCOPE;
+        int tint;
         ItemStack attachment = ItemStack.EMPTY;
         String slotName = "", itemName = "";
         int w = MIN_W;
@@ -62,8 +79,8 @@ public final class RefitCallouts {
         float targetX, targetY, x, y;
         boolean placed = false;
 
-        Card(AttachmentType type) {
-            this.type = type;
+        Card(RefitSlot slot) {
+            this.slot = slot;
         }
 
         boolean contains(double mx, double my) {
@@ -71,12 +88,21 @@ public final class RefitCallouts {
         }
     }
 
-    private final Map<AttachmentType, Card> cards = new EnumMap<>(AttachmentType.class);
+    /** One card's content for this frame. */
+    private record Entry(RefitSlot slot, AttachmentType iconType, String name, ItemStack installed, int tint) {}
+
+    private final Map<RefitSlot, Card> cards = new HashMap<>();
     private final List<Card> visible = new ArrayList<>();
     private long lastLayoutNanos = 0L;
+    @Nullable
+    private RefitSlot selected;
 
-    /** Recompute cards and layout for this frame. Call once per screen render, before {@link #draw}. */
-    public void layout() {
+    /**
+     * Recompute cards and layout for this frame ({@code selected} = the focused slot, or {@code null} in the
+     * overview). Call once per screen render, before {@link #draw}.
+     */
+    public void layout(@Nullable RefitSlot selected) {
+        this.selected = selected;
         visible.clear();
         Minecraft mc = Minecraft.getInstance();
         BedrockGunModel model = RefitProjection.model();
@@ -88,19 +114,19 @@ public final class RefitCallouts {
         RefitProjection.Point centre = RefitProjection.project(RefitOrbit.pivot(model));
         float[] rect = gunRect(model, centre);
 
-        for (AttachmentType type : AttachmentType.values()) {
-            if (type == AttachmentType.NONE || !iGun.allowAttachmentType(gun, type)) {
-                cards.remove(type);
-                continue;
-            }
-            Card card = cards.computeIfAbsent(type, Card::new);
-            card.attachment = iGun.getAttachment(gun, type);
-            card.slotName = slotName(type);
+        List<Entry> entries = collect(mc, gun, iGun);
+        cards.keySet().retainAll(entries.stream().map(Entry::slot).toList());
+        for (Entry entry : entries) {
+            Card card = cards.computeIfAbsent(entry.slot(), Card::new);
+            card.iconType = entry.iconType();
+            card.tint = entry.tint();
+            card.attachment = entry.installed();
+            card.slotName = entry.name();
             card.itemName = card.attachment.isEmpty() ? I18n.get("gui.renaissance_lib.refit.empty")
                     : card.attachment.getHoverName().getString();
             int textW = Math.max(font.width(card.slotName), font.width(card.itemName));
             card.w = Math.min(MAX_W, Math.max(MIN_W, ICON + 8 + textW + 4));
-            card.anchor = RefitProjection.project(RefitOrbit.slotAnchor(model, type));
+            card.anchor = RefitProjection.project(RefitAnchors.anchor(entry.slot(), model, gun));
             card.docked = card.anchor == null || centre == null;
             card.farSide = !card.docked && card.anchor.depth() > centre.depth() + 0.01f;
             visible.add(card);
@@ -109,6 +135,52 @@ public final class RefitCallouts {
         placeOnGun(centre, rect);
         placeDocked();
         ease();
+    }
+
+    /**
+     * Every card this gun has right now: TaC:Z's slots the gun allows; every rail mount on every installed rail
+     * host (nested mounts included); the installed underbarrel's own slots; and the conversion-kit slot when a kit
+     * is installed or a compatible one is carried.
+     */
+    private static List<Entry> collect(Minecraft mc, ItemStack gun, IGun iGun) {
+        List<Entry> entries = new ArrayList<>();
+        for (AttachmentType type : AttachmentType.values()) {
+            if (type == AttachmentType.NONE || !iGun.allowAttachmentType(gun, type)) continue;
+            entries.add(new Entry(new RefitSlot.Native(type), type, slotName(type), iGun.getAttachment(gun, type), 0));
+        }
+        for (ScopeRails.RailHost host : ScopeRails.getRailHosts(gun)) {
+            collectRails(entries, gun, MountPath.root(host.type()), host.spec());
+        }
+        GunData ubData = Underbarrel.getUnderbarrelData(Underbarrel.getInstalledUnderbarrel(gun));
+        if (ubData != null) {
+            for (AttachmentType type : UnderbarrelAttachments.getAllowedTypes(ubData)) {
+                entries.add(new Entry(new RefitSlot.UnderbarrelSlot(type), type,
+                        I18n.get("gui.renaissance_lib.refit.underbarrel_slot", slotName(type)),
+                        UnderbarrelAttachments.getInstalled(gun, type), TINT_UNDERBARREL));
+            }
+        }
+        if (mc.player != null && (ConversionStorage.hasKit(gun)
+                || !ConversionRefitOverlay.collectInventoryKits(mc.player, gun).isEmpty())) {
+            String key = "tooltip.renaissance_lib.conversion.slot";
+            entries.add(new Entry(new RefitSlot.Conversion(), AttachmentType.EXTENDED_MAG,
+                    I18n.exists(key) ? I18n.get(key) : "Conversion Kit", ConversionStorage.getKit(gun),
+                    TINT_CONVERSION));
+        }
+        return entries;
+    }
+
+    private static void collectRails(List<Entry> entries, ItemStack gun, MountPath hostPath, RailsModifier.Spec spec) {
+        if (spec == null || hostPath.depth() >= MAX_RAIL_DEPTH) return;
+        List<RailsModifier.RailSlot> slots = spec.getSlots();
+        for (int i = 0; i < slots.size(); i++) {
+            MountPath path = hostPath.child(i);
+            ItemStack mounted = RailStorage.getMountedOnGun(gun, path);
+            entries.add(new Entry(new RefitSlot.Rail(path), AttachmentType.SCOPE,
+                    RailRefitOverlay.railSlotName(slots, i).getString(), mounted, TINT_RAIL));
+            if (!mounted.isEmpty()) {
+                collectRails(entries, gun, path, ScopeRails.getRailsSpecForAttachment(mounted));
+            }
+        }
     }
 
     /** The gun's on-screen outline (min x, min y, max x, max y) from its projected bounding box. */
@@ -250,9 +322,15 @@ public final class RefitCallouts {
 
     /** The on-screen rect {x, y, w, h} of a slot's card this frame, or {@code null} if it has none. */
     @Nullable
-    public float[] cardRect(AttachmentType type) {
-        Card card = cards.get(type);
+    public float[] cardRect(RefitSlot slot) {
+        Card card = slot == null ? null : cards.get(slot);
         return card == null || !visible.contains(card) ? null : new float[]{card.x, card.y, card.w, CARD_H};
+    }
+
+    /** Whether {@code slot} has a card this frame (a selected slot can vanish, e.g. its rail host was removed). */
+    public boolean has(RefitSlot slot) {
+        Card card = slot == null ? null : cards.get(slot);
+        return card != null && visible.contains(card);
     }
 
     /** The hovered card's attachment tooltip — drawn last, over everything. */
@@ -268,7 +346,7 @@ public final class RefitCallouts {
         Minecraft mc = Minecraft.getInstance();
         Font font = mc.font;
         ItemStack gun = mc.player == null ? ItemStack.EMPTY : mc.player.getMainHandItem();
-        AttachmentType selected = RefitTransform.getCurrentTransformType();
+        RefitSlot selected = this.selected;
         Card hovered = cardAt(mouseX, mouseY);
 
         // Leader lines first, under the cards.
@@ -283,7 +361,7 @@ public final class RefitCallouts {
             if (card.docked) continue;
             int a = alpha(card, selected, hovered);
             float[] end = attachPoint(card);
-            boolean lit = card == hovered || card.type == selected;
+            boolean lit = card == hovered || card.slot.equals(selected);
             int c = lit ? ACCENT : 0xE0E0E0;
             buf.vertex(pose, card.anchor.x(), card.anchor.y(), 0f).color(c >> 16 & 255, c >> 8 & 255, c & 255, a).endVertex();
             buf.vertex(pose, end[0], end[1], 0f).color(c >> 16 & 255, c >> 8 & 255, c & 255, a).endVertex();
@@ -293,19 +371,20 @@ public final class RefitCallouts {
 
         for (Card card : visible) {
             int a = alpha(card, selected, hovered);
-            boolean lit = card == hovered || card.type == selected;
+            boolean lit = card == hovered || card.slot.equals(selected);
             if (!card.docked) {
                 int ax = Math.round(card.anchor.x()), ay = Math.round(card.anchor.y());
-                graphics.fill(ax - 2, ay - 2, ax + 2, ay + 2, (a << 24) | (lit ? ACCENT : 0xFFFFFF));
+                int dot = lit ? ACCENT : (card.tint != 0 ? card.tint : 0xFFFFFF);
+                graphics.fill(ax - 2, ay - 2, ax + 2, ay + 2, (a << 24) | dot);
             }
-            drawCard(graphics, font, gun, card, a, lit, card.type == selected);
+            drawCard(graphics, font, gun, card, a, lit, card.slot.equals(selected));
         }
     }
 
-    private static int alpha(Card card, AttachmentType selected, @Nullable Card hovered) {
-        if (card == hovered || card.type == selected) return 255;
+    private static int alpha(Card card, @Nullable RefitSlot selected, @Nullable Card hovered) {
+        if (card == hovered || card.slot.equals(selected)) return 255;
         int a = card.farSide ? 130 : 235;
-        if (selected != AttachmentType.NONE) a = Math.min(a, 90); // focused on another slot
+        if (selected != null) a = Math.min(a, 90); // focused on another slot
         return a;
     }
 
@@ -330,6 +409,8 @@ public final class RefitCallouts {
         graphics.fill(x, y + CARD_H - 1, x + w, y + CARD_H, border);
         graphics.fill(x, y, x + 1, y + CARD_H, border);
         graphics.fill(x + w - 1, y, x + w, y + CARD_H, border);
+        // Our own slots (rails, underbarrel, conversion) carry a coloured edge in their system's colour.
+        if (card.tint != 0) graphics.fill(x + 1, y + 1, x + 3, y + CARD_H - 1, (a << 24) | card.tint);
 
         // Slot icon: TaC:Z's slot frame, then the installed attachment or the slot type's empty icon.
         int ix = x + 2, iy = y + 2;
@@ -337,7 +418,7 @@ public final class RefitCallouts {
         RenderSystem.setShaderColor(1f, 1f, 1f, a / 255f);
         graphics.blit(GunRefitScreen.SLOT_TEXTURE, ix, iy, 0, 0, ICON, ICON, ICON, ICON);
         if (card.attachment.isEmpty()) {
-            int u = GunRefitScreen.getSlotTextureXOffset(gun, card.type);
+            int u = GunRefitScreen.getSlotTextureXOffset(gun, card.iconType);
             graphics.blit(GunRefitScreen.ICONS_TEXTURE, ix + 2, iy + 2, ICON - 4, ICON - 4, u, 0, 32, 32,
                     GunRefitScreen.getSlotsTextureWidth(), 32);
         }
@@ -363,9 +444,9 @@ public final class RefitCallouts {
 
     /** The slot under the mouse, or {@code null}. */
     @Nullable
-    public AttachmentType slotAt(double mx, double my) {
+    public RefitSlot slotAt(double mx, double my) {
         Card card = cardAt(mx, my);
-        return card == null ? null : card.type;
+        return card == null ? null : card.slot;
     }
 
     /** Forget layout state (placement, sides) — on open, so cards appear in place instead of gliding in. */

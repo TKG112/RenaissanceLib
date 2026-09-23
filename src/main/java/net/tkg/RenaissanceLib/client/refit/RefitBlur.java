@@ -43,7 +43,11 @@ public final class RefitBlur {
         PostChain blur = chain();
         if (blur == null) return;
 
-        float radius = MAX_RADIUS * progress;
+        // Whole-pixel radii only: vanilla's blur.fsh divides by (2*Radius + 1) but samples whole steps, so a
+        // fractional radius dims the image (by up to ~40%) — ramping through fractions made the screen pulse dark
+        // while opening/closing. Below 1 there's nothing to blur.
+        float radius = Math.round(MAX_RADIUS * progress);
+        if (radius < 1f) return;
         for (PostPass pass : ((PostChainAccessor) blur).renaissance$getPasses()) {
             pass.getEffect().safeGetUniform("Radius").set(radius);
         }

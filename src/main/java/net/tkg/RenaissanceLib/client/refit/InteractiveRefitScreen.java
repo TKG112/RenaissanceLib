@@ -1,13 +1,20 @@
 package net.tkg.RenaissanceLib.client.refit;
 
+import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.animation.screen.RefitTransform;
 import com.tacz.guns.client.gui.GunRefitScreen;
+import com.tacz.guns.client.gui.components.refit.GunAttachmentSlot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.List;
 
 /**
  * The interactive refit screen (see {@code docs/dev/INTERACTIVE_REFIT_SCREEN.md}). It <em>extends</em> TaC:Z's
@@ -15,9 +22,10 @@ import org.lwjgl.glfw.GLFW;
  * refit camera ({@code RefitTransform}), hidden hotbar/crosshair, the refit key's toggle-close and the server's
  * post-install refresh (which re-runs {@link #init()}). {@code RefitKeyMixin} opens this instead of TaC:Z's.
  *
- * <p>Stage 1: TaC:Z's own buttons are kept; this adds the turntable camera ({@link RefitOrbit}) — drag on empty
- * space to rotate, right-drag to move the gun across the screen, scroll to zoom, double-click or R to reset — the
- * blurred background ({@link RefitBlur}), and a P-toggled pivot/bounding-box debug overlay ({@link RefitDebug}).
+ * <p>Adds the turntable camera ({@link RefitOrbit}) — drag on empty space to rotate, right-drag to move the gun
+ * across the screen, scroll to zoom, double-click or R to reset — the blurred background ({@link RefitBlur}), the
+ * floating slot cards ({@link RefitCallouts}, replacing TaC:Z's slot buttons; TaC:Z's attachment list for the
+ * selected slot is kept for now), and a P-toggled pivot/bounding-box debug overlay ({@link RefitDebug}).
  */
 @OnlyIn(Dist.CLIENT)
 public class InteractiveRefitScreen extends GunRefitScreen {
@@ -26,6 +34,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     /** Our screen was the last refit screen shown — its blur/orbit keep easing out after it closes. */
     private static boolean lingering = false;
 
+    private final RefitCallouts callouts = new RefitCallouts();
     private boolean orbiting = false;
     private boolean panning = false;
     private long lastEmptyClickMs = 0L;
@@ -48,8 +57,35 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         return lingering;
     }
 
+    /** TaC:Z's layout, minus its slot buttons — the floating cards replace them. */
+    @Override
+    public void init() {
+        super.init();
+        List<GuiEventListener> slotButtons = children().stream()
+                .filter(GunAttachmentSlot.class::isInstance).map(GuiEventListener.class::cast).toList();
+        slotButtons.forEach(this::removeWidget);
+    }
+
+    /**
+     * Select a slot like TaC:Z's slot button does: the camera glides to the slot's refit view and the screen rebuilds
+     * with that slot's attachment list; selecting the selected slot again goes back to the overview.
+     */
+    private void selectSlot(AttachmentType type) {
+        AttachmentType next = RefitTransform.getCurrentTransformType() == type ? AttachmentType.NONE : type;
+        if (RefitTransform.changeRefitScreenView(next)) {
+            Minecraft.getInstance().getSoundManager()
+                    .play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+            init();
+        }
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        AttachmentType card = callouts.slotAt(mouseX, mouseY);
+        if (card != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            selectSlot(card);
+            return true;
+        }
         if (super.mouseClicked(mouseX, mouseY, button)) return true; // a TaC:Z button took it
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             long now = System.currentTimeMillis();
@@ -112,6 +148,8 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
+        callouts.layout();
+        callouts.draw(graphics, mouseX, mouseY);
         RefitDebug.draw(graphics);
     }
 }

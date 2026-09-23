@@ -16,7 +16,8 @@ import org.lwjgl.glfw.GLFW;
  * post-install refresh (which re-runs {@link #init()}). {@code RefitKeyMixin} opens this instead of TaC:Z's.
  *
  * <p>Stage 1: TaC:Z's own buttons are kept; this adds the turntable camera ({@link RefitOrbit}) — drag on empty
- * space to rotate, scroll to zoom, double-click or R to reset — and the blurred background ({@link RefitBlur}).
+ * space to rotate, right-drag to move the gun across the screen, scroll to zoom, double-click or R to reset — the
+ * blurred background ({@link RefitBlur}), and a P-toggled pivot/bounding-box debug overlay ({@link RefitDebug}).
  */
 @OnlyIn(Dist.CLIENT)
 public class InteractiveRefitScreen extends GunRefitScreen {
@@ -26,6 +27,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     private static boolean lingering = false;
 
     private boolean orbiting = false;
+    private boolean panning = false;
     private long lastEmptyClickMs = 0L;
 
     public InteractiveRefitScreen() {
@@ -60,6 +62,10 @@ public class InteractiveRefitScreen extends GunRefitScreen {
             orbiting = true;
             return true;
         }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            panning = true;
+            return true;
+        }
         return false;
     }
 
@@ -69,12 +75,17 @@ public class InteractiveRefitScreen extends GunRefitScreen {
             RefitOrbit.drag(dragX, dragY);
             return true;
         }
+        if (panning && button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            RefitOrbit.pan(dragX, dragY);
+            return true;
+        }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) orbiting = false;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) panning = false;
         return super.mouseReleased(mouseX, mouseY, button);
     }
 

@@ -40,19 +40,30 @@ public final class RefitOrbit {
     /** Smoothing time constant (seconds) — the displayed view eases toward the dragged/scrolled target. */
     private static final float EASE_TAU = 0.06f;
 
-    private static float targetYaw, targetPitch, targetZoom;
-    private static float yaw, pitch, zoom;
+    /** Pan speed: blocks of camera-plane movement per GUI pixel dragged. */
+    private static final float PAN_PER_PIXEL = 0.0025f;
+    /** Pan limit, in blocks from TaC:Z's refit framing. */
+    private static final float MAX_PAN = 1.0f;
+
+    private static float targetYaw, targetPitch, targetZoom, targetPanX, targetPanY;
+    private static float yaw, pitch, zoom, panX, panY;
     private static long lastUpdateNanos = 0L;
 
     private RefitOrbit() {}
 
     /** Back to TaC:Z's default refit view. {@code instant} also snaps the displayed view (used when opening). */
     public static void reset(boolean instant) {
-        targetYaw = targetPitch = targetZoom = 0f;
+        targetYaw = targetPitch = targetZoom = targetPanX = targetPanY = 0f;
         if (instant) {
-            yaw = pitch = zoom = 0f;
+            yaw = pitch = zoom = panX = panY = 0f;
             lastUpdateNanos = 0L;
         }
+    }
+
+    /** Right-drag: slide the gun across the screen (camera plane) without turning it. */
+    public static void pan(double dx, double dy) {
+        targetPanX = Mth.clamp(targetPanX + (float) dx * PAN_PER_PIXEL, -MAX_PAN, MAX_PAN);
+        targetPanY = Mth.clamp(targetPanY - (float) dy * PAN_PER_PIXEL, -MAX_PAN, MAX_PAN);
     }
 
     /** Drag by a screen delta in GUI pixels: right spins the near side right, down tips it down. */
@@ -75,6 +86,8 @@ public final class RefitOrbit {
         yaw += (targetYaw - yaw) * alpha;
         pitch += (targetPitch - pitch) * alpha;
         zoom += (targetZoom - zoom) * alpha;
+        panX += (targetPanX - panX) * alpha;
+        panY += (targetPanY - panY) * alpha;
     }
 
     /**
@@ -86,8 +99,11 @@ public final class RefitOrbit {
         update();
         if (weight <= 0f || model == null) return m;
         float w = Mth.clamp(weight, 0f, 1f);
-        float y = yaw * w, p = pitch * w, z = zoom * w;
-        if (Math.abs(y) < 1e-3f && Math.abs(p) < 1e-3f && Math.abs(z) < 1e-4f) return m;
+        float y = yaw * w, p = pitch * w, z = zoom * w, px = panX * w, py = panY * w;
+        if (Math.abs(y) < 1e-3f && Math.abs(p) < 1e-3f && Math.abs(z) < 1e-4f
+                && Math.abs(px) < 1e-4f && Math.abs(py) < 1e-4f) {
+            return m;
+        }
 
         // Rotation centre in the frame TaC:Z's positioning sits in: c = T(0,1.5,0) · m · pivot (pivot in m's input
         // space). That frame is the camera's after the gun renderer's translate(0,1.5,0) + 180° roll, so its X/Y are
@@ -98,11 +114,13 @@ public final class RefitOrbit {
         // Zoom along the view axis (camera looks down -Z), never pulling the centre into the near plane.
         z = Math.min(z, -MIN_PIVOT_DEPTH - c.z);
 
-        // Camera-space orbit about c, then undo the surrounding 1.5 translate so it slots in for m:
-        // m' = T(0,-1.5,0) · T(0,0,z) · T(c) · Rx(pitch) · Ry(yaw) · T(-c) · T(0,1.5,0) · m
+        // Orbit about c, then undo the surrounding 1.5 translate so it slots in for m:
+        // m' = T(0,-1.5,0) · T(pan, z) · T(c) · Rx(pitch) · Ry(yaw) · T(-c) · T(0,1.5,0) · m
+        // This frame's X/Y are the camera's flipped (the renderer's 180° roll), so screen-right / screen-up pan is
+        // -X / -Y here.
         Matrix4f out = new Matrix4f()
                 .translate(0f, -1.5f, 0f)
-                .translate(0f, 0f, z)
+                .translate(-px, -py, z)
                 .translate(c)
                 .rotate(Axis.XP.rotationDegrees(p))
                 .rotate(Axis.YP.rotationDegrees(y))

@@ -20,6 +20,7 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * Debug overlay for the refit screen (toggle with P): the pivot the gun turns about (red cross), the bounding box it
@@ -144,6 +145,22 @@ public final class RefitDebug {
                 (box.max().y - box.min().y) * 16f, (box.max().z - box.min().z) * 16f);
         graphics.drawString(font, "[P] refit debug  " + what + size + " | slots " + anchors.size() + " on gun, "
                 + docked.size() + " docked", 4, 4, 0xFFFFFF, true);
+        graphics.drawString(font, BUILD_STAMP, 4, 15, 0xFFAAAAAA, true);
+    }
+
+    /** "build <commit> (<variant>, <time>)" from the jar's build stamp — which build is actually running. */
+    private static final String BUILD_STAMP = readBuildStamp();
+
+    private static String readBuildStamp() {
+        try (var in = RefitDebug.class.getResourceAsStream("/renaissance_lib_build.properties")) {
+            if (in == null) return "build: no stamp (IDE run or pre-stamp jar)";
+            Properties p = new Properties();
+            p.load(in);
+            return "build " + p.getProperty("commit", "?") + " (" + p.getProperty("variant", "?") + ", "
+                    + p.getProperty("built", "?") + ")";
+        } catch (Exception e) {
+            return "build: stamp unreadable";
+        }
     }
 
     /** A label position pushed out from the mount point, away from the gun's projected centre. */

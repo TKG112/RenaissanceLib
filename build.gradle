@@ -33,6 +33,29 @@ base {
 // Variant-specific sources (re-anchored mixins for the selected TaC:Z bytecode) layer on top of src/main.
 sourceSets.main.java.srcDir "src/tacz_${taczVariant}/java"
 
+// Build stamp: the git commit (+ "-dirty" if the tree had uncommitted changes), TaC:Z variant and build time, packed
+// into the jar as renaissance_lib_build.properties — shown in the refit screen's debug overlay (P) so a tester can
+// tell at a glance which build is actually running. Regenerated on every build.
+def buildInfoDir = layout.buildDirectory.dir('generated/buildinfo')
+def writeBuildInfo = tasks.register('writeBuildInfo') {
+    def outFile = buildInfoDir.get().file('renaissance_lib_build.properties').asFile
+    def variant = taczVariant
+    def root = projectDir
+    outputs.file(outFile)
+    outputs.upToDateWhen { false }
+    doLast {
+        def commit = 'unknown'
+        try {
+            commit = ['git', 'rev-parse', '--short', 'HEAD'].execute(null, root).text.trim()
+            if (!['git', 'status', '--porcelain'].execute(null, root).text.trim().isEmpty()) commit += '-dirty'
+        } catch (ignored) {}
+        outFile.parentFile.mkdirs()
+        outFile.text = "commit=${commit}\nvariant=${variant}\nbuilt=${new Date().format('yyyy-MM-dd HH:mm')}\n"
+    }
+}
+sourceSets.main.resources.srcDir buildInfoDir
+tasks.named('processResources') { dependsOn writeBuildInfo }
+
 mixin {
     add sourceSets.main, "renaissance_lib.refmap.json"
     config "renaissance_lib.mixins.json"

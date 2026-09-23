@@ -3,6 +3,7 @@ package net.tkg.RenaissanceLib.compat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
+import com.tacz.guns.client.gui.components.refit.InventoryAttachmentSlot;
 import com.tacz.guns.client.model.functional.AttachmentRender;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import net.minecraft.resources.ResourceLocation;
@@ -40,6 +41,12 @@ public final class TaczCompat {
 
     /** No-op on the stable release (immediate render pipeline; nothing to flush). See the beta variant. */
     public static void flushRenderBuffers() {
+    }
+
+    /** The item a refit-list option stands for. Stable's option is always an inventory slot. See the beta variant. */
+    public static ItemStack inventorySlotStack(InventoryAttachmentSlot slot) {
+        var player = net.minecraft.client.Minecraft.getInstance().player;
+        return player == null ? ItemStack.EMPTY : player.getInventory().getItem(slot.getSlotIndex());
     }
 
     /** The model TaC:Z actually draws for an attachment. Stable has no per-attachment variants: the index model. */

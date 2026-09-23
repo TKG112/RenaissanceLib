@@ -35,6 +35,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     private static boolean lingering = false;
 
     private final RefitCallouts callouts = new RefitCallouts();
+    private final RefitPicker picker = new RefitPicker();
     private boolean orbiting = false;
     private boolean panning = false;
     private long lastEmptyClickMs = 0L;
@@ -81,12 +82,13 @@ public class InteractiveRefitScreen extends GunRefitScreen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // TaC:Z's widgets first — the picker's options sit over the (faded) cards of other slots.
+        if (super.mouseClicked(mouseX, mouseY, button)) return true;
         AttachmentType card = callouts.slotAt(mouseX, mouseY);
         if (card != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             selectSlot(card);
             return true;
         }
-        if (super.mouseClicked(mouseX, mouseY, button)) return true; // a TaC:Z button took it
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             long now = System.currentTimeMillis();
             if (now - lastEmptyClickMs <= DOUBLE_CLICK_MS) {
@@ -145,11 +147,19 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    /**
+     * Layering: slot cards, then the picker's sub-card frames, then TaC:Z's own widgets (the picker's option icons,
+     * repositioned) and tooltips, then the option names, then a hovered card's tooltip, then the debug overlay.
+     */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        super.render(graphics, mouseX, mouseY, partialTick);
         callouts.layout();
+        picker.layout(children(), callouts);
         callouts.draw(graphics, mouseX, mouseY);
+        picker.drawBackgrounds(graphics, mouseX, mouseY);
+        super.render(graphics, mouseX, mouseY, partialTick);
+        picker.drawLabels(graphics, mouseX, mouseY);
+        callouts.drawTooltip(graphics, mouseX, mouseY);
         RefitDebug.draw(graphics);
     }
 }

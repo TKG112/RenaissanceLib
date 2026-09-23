@@ -246,6 +246,21 @@ public final class RefitCallouts {
 
     // ---- drawing -----------------------------------------------------------------------------------------------
 
+    /** The on-screen rect {x, y, w, h} of a slot's card this frame, or {@code null} if it has none. */
+    @Nullable
+    public float[] cardRect(AttachmentType type) {
+        Card card = cards.get(type);
+        return card == null || !visible.contains(card) ? null : new float[]{card.x, card.y, card.w, CARD_H};
+    }
+
+    /** The hovered card's attachment tooltip — drawn last, over everything. */
+    public void drawTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        Card hovered = cardAt(mouseX, mouseY);
+        if (hovered != null && !hovered.attachment.isEmpty()) {
+            graphics.renderTooltip(Minecraft.getInstance().font, hovered.attachment, mouseX, mouseY);
+        }
+    }
+
     public void draw(GuiGraphics graphics, int mouseX, int mouseY) {
         if (visible.isEmpty()) return;
         Minecraft mc = Minecraft.getInstance();
@@ -282,10 +297,6 @@ public final class RefitCallouts {
                 graphics.fill(ax - 2, ay - 2, ax + 2, ay + 2, (a << 24) | (lit ? ACCENT : 0xFFFFFF));
             }
             drawCard(graphics, font, gun, card, a, lit, card.type == selected);
-        }
-
-        if (hovered != null && !hovered.attachment.isEmpty()) {
-            graphics.renderTooltip(font, hovered.attachment, mouseX, mouseY);
         }
     }
 

@@ -5,6 +5,7 @@ import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
+import com.tacz.guns.client.gui.components.refit.InventoryAttachmentSlot;
 import com.tacz.guns.client.model.functional.AttachmentRender;
 import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
 import com.tacz.guns.client.resource.index.ClientAttachmentVariantIndex;
@@ -58,6 +59,14 @@ public final class TaczCompat {
      */
     public static void flushRenderBuffers() {
         net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
+    }
+
+    /**
+     * The item a refit-list option stands for. The beta's options can be virtual (OEM / variant entries that aren't
+     * in the inventory), so it exposes the displayed stack directly.
+     */
+    public static ItemStack inventorySlotStack(InventoryAttachmentSlot slot) {
+        return slot.getItemStack();
     }
 
     /**

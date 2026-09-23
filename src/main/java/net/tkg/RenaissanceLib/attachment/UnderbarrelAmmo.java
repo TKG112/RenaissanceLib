@@ -6,6 +6,7 @@ import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.resource.pojo.data.gun.FeedType;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
 import com.tacz.guns.resource.pojo.data.gun.GunReloadData;
+import com.tacz.guns.resource.pojo.data.gun.GunReloadTime;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -78,9 +79,9 @@ public final class UnderbarrelAmmo {
      */
     public static int feedTicks(ItemStack gunItem, GunData ubData, int currentAmmo) {
         GunReloadData reload = ubData.getReloadData();
-        float perShell = (reload != null && reload.getFeed() != null) ? reload.getFeed().getEmptyTime() : 0f;
+        float perShell = reload != null ? stateTime(reload.getFeed(), currentAmmo) : 0f;
         if (perShell <= 0f) perShell = 1.0f;
-        if (reload != null && reload.getType() == FeedType.MANUAL) {
+        if (isManual(ubData)) {
             int capacity = gunItem != null ? maxAmmo(gunItem, ubData) : maxAmmo(ubData);
             int shells = Math.max(1, capacity - Math.max(0, currentAmmo));
             return Math.max(1, Math.round(Math.max(0.1f, perShell * shells) * 20f));
@@ -89,18 +90,37 @@ public final class UnderbarrelAmmo {
     }
 
     /**
-     * The <b>cooldown</b> phase in ticks: the lockout <em>after</em> the rounds are loaded, before the
-     * underbarrel can fire again (TaC:Z's reload {@code cooldown} "empty" time). Zero if none is authored.
+     * The authored reload {@code cooldown} in ticks for the reload state (empty / tactical). Zero if none. Its
+     * meaning depends on the feed type — see {@link #lockTicks}.
      */
-    public static int cooldownTicks(GunData ubData) {
+    public static int cooldownTicks(GunData ubData, int currentAmmo) {
         GunReloadData reload = ubData.getReloadData();
-        float seconds = (reload != null && reload.getCooldown() != null) ? reload.getCooldown().getEmptyTime() : 0f;
+        float seconds = reload != null ? stateTime(reload.getCooldown(), currentAmmo) : 0f;
         return Math.max(0, Math.round(seconds * 20f));
     }
 
-    /** The full reload lockout in ticks (feed + cooldown) — how long until the underbarrel can fire again. */
-    public static int totalReloadTicks(ItemStack gunItem, GunData ubData, int currentAmmo) {
-        return feedTicks(gunItem, ubData, currentAmmo) + cooldownTicks(ubData);
+    /**
+     * The full reload lockout in ticks — how long from reload start until the underbarrel can fire again. For a
+     * magazine feed this is TaC:Z's own semantics: {@code cooldown} is the <em>total</em> reload time measured
+     * from the start (so the lockout is the later of feed and cooldown, not their sum). For a shell-by-shell
+     * (manual) feed the feed scales with the shells loaded, so the cooldown follows it.
+     */
+    public static int lockTicks(ItemStack gunItem, GunData ubData, int currentAmmo) {
+        int feed = feedTicks(gunItem, ubData, currentAmmo);
+        int cooldown = cooldownTicks(ubData, currentAmmo);
+        return isManual(ubData) ? feed + cooldown : Math.max(feed, cooldown);
+    }
+
+    private static boolean isManual(GunData ubData) {
+        GunReloadData reload = ubData.getReloadData();
+        return reload != null && reload.getType() == FeedType.MANUAL;
+    }
+
+    /** TaC:Z's reload-state pick: the tactical time when rounds remain (if authored), else the empty time. */
+    private static float stateTime(GunReloadTime time, int currentAmmo) {
+        if (time == null) return 0f;
+        if (currentAmmo > 0 && time.getTacticalTime() > 0f) return time.getTacticalTime();
+        return time.getEmptyTime();
     }
 
     /** Whether the underbarrel is mid-reload (can't fire yet) — locked through feed + cooldown. */
@@ -134,17 +154,17 @@ public final class UnderbarrelAmmo {
     }
 
     /**
-     * Begin a two-phase reload: {@code feedTicks} until the rounds load (display), then {@code cooldownTicks}
-     * more before firing is allowed. {@code preReloadAmmo} is the count shown until the feed completes. The
-     * loaded count itself ({@link #set}) is written by the caller at reload start (authoritative), but stays
-     * hidden by {@link #getDisplay} and unusable by {@link #isReloading} until the phases elapse.
+     * Begin a two-phase reload: the rounds load (display) {@code feedTicks} after start, and firing is allowed
+     * {@code lockTicks} after start ({@link #lockTicks}). {@code preReloadAmmo} is the count shown until the feed
+     * completes. The loaded count itself ({@link #set}) is written by the caller at reload start (authoritative),
+     * but stays hidden by {@link #getDisplay} and unusable by {@link #isReloading} until the phases elapse.
      */
-    public static void startReload(ItemStack gunItem, Level level, int feedTicks, int cooldownTicks,
+    public static void startReload(ItemStack gunItem, Level level, int feedTicks, int lockTicks,
                                    int preReloadAmmo) {
         if (gunItem == null || level == null) return;
         long now = level.getGameTime();
         gunItem.getOrCreateTag().putLong(KEY_FEED_END, now + Math.max(0, feedTicks));
-        gunItem.getOrCreateTag().putLong(KEY_RELOAD_END, now + Math.max(0, feedTicks) + Math.max(0, cooldownTicks));
+        gunItem.getOrCreateTag().putLong(KEY_RELOAD_END, now + Math.max(Math.max(0, feedTicks), lockTicks));
         gunItem.getOrCreateTag().putInt(KEY_PRE_RELOAD, Math.max(0, preReloadAmmo));
     }
 }

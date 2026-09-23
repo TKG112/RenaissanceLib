@@ -74,13 +74,13 @@ public class ClientMessageReloadUnderbarrel {
         int consumed = consumeFromInventory(player, ammoId, max - current);
         if (consumed <= 0) return; // no matching ammo
 
-        // Two-phase: rounds load after the feed time (shell-by-shell scales with the deficit), then a cooldown
-        // before firing is allowed. The loaded count is set now (authoritative) but stays hidden by getDisplay
-        // and unusable by isReloading until the feed/cooldown elapse.
+        // Two-phase: rounds load at the feed time (shell-by-shell scales with the deficit); firing unlocks at the
+        // reload's total lockout. The loaded count is set now (authoritative) but stays hidden by getDisplay
+        // and unusable by isReloading until those elapse.
         int feedTicks = UnderbarrelAmmo.feedTicks(gunItem, ubData, current);
-        int cooldownTicks = UnderbarrelAmmo.cooldownTicks(ubData);
+        int lockTicks = UnderbarrelAmmo.lockTicks(gunItem, ubData, current);
         UnderbarrelAmmo.set(gunItem, current + consumed);
-        UnderbarrelAmmo.startReload(gunItem, level, feedTicks, cooldownTicks, current);
+        UnderbarrelAmmo.startReload(gunItem, level, feedTicks, lockTicks, current);
     }
 
     /**

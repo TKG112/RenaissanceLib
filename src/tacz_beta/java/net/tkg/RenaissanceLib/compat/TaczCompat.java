@@ -1,13 +1,23 @@
 package net.tkg.RenaissanceLib.compat;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.attachment.AttachmentType;
+import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.model.functional.AttachmentRender;
+import com.tacz.guns.client.resource.index.ClientAttachmentIndex;
+import com.tacz.guns.client.resource.index.ClientAttachmentVariantIndex;
+import com.tacz.guns.client.resource.index.ClientSlotAdapterIndex;
+import com.tacz.guns.util.SlotAdapterHelper;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.joml.Vector3f;
+
+import javax.annotation.Nullable;
 
 /**
  * Thin shims over the handful of TaC:Z APIs that differ between the stable release and the unreleased beta, so
@@ -48,5 +58,43 @@ public final class TaczCompat {
      */
     public static void flushRenderBuffers() {
         net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
+    }
+
+    /**
+     * The model TaC:Z actually draws for an attachment: a replace-mode variant's model when one applies (the beta
+     * lets an attachment swap its model per variant), else the index model. Mirrors
+     * {@code AttachmentRender.renderAttachment}.
+     */
+    @Nullable
+    public static BedrockAttachmentModel renderedAttachmentModel(ItemStack attachment, ClientAttachmentIndex index) {
+        ClientAttachmentVariantIndex variant = TimelessAPI.getClientAttachmentVariantIndex(attachment).orElse(null);
+        if (variant != null && variant.isReplaceMode()
+                && variant.getAttachmentModel() != null && variant.getModelTexture() != null) {
+            return variant.getAttachmentModel();
+        }
+        return index.getAttachmentModel();
+    }
+
+    /**
+     * The extra translation TaC:Z applies to an attachment after its mount node, in model units (pixels, the
+     * authored JSON sense): the gun's slot adapter's {@code mount_offset}, plus an overlay-mode variant's. Mirrors
+     * {@code AttachmentRender.renderAttachment}, which draws with {@code translate(x/16, -y/16, z/16)} of each.
+     * {@code null} when neither applies.
+     */
+    @Nullable
+    public static Vector3f attachmentMountOffset(ItemStack gun, ItemStack attachment, AttachmentType type,
+                                                 ResourceLocation attachmentId) {
+        Vector3f sum = null;
+        ResourceLocation adapterId = SlotAdapterHelper.getEffectiveSlotAdapter(gun, type, attachmentId);
+        if (adapterId != null) {
+            Vector3f off = TimelessAPI.getClientSlotAdapterIndex(adapterId)
+                    .map(ClientSlotAdapterIndex::getMountOffset).orElse(null);
+            if (off != null) sum = new Vector3f(off);
+        }
+        ClientAttachmentVariantIndex variant = TimelessAPI.getClientAttachmentVariantIndex(attachment).orElse(null);
+        if (variant != null && variant.isOverlayMode() && variant.getMountOffset() != null) {
+            sum = sum == null ? new Vector3f(variant.getMountOffset()) : sum.add(variant.getMountOffset());
+        }
+        return sum;
     }
 }

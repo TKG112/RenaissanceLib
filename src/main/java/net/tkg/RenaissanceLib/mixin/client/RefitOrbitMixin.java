@@ -3,7 +3,9 @@ package net.tkg.RenaissanceLib.mixin.client;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.tacz.guns.client.event.FirstPersonRenderGunEvent;
+import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.model.BedrockGunModel;
+import com.tacz.guns.client.model.bedrock.BedrockPart;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.client.refit.InteractiveRefitScreen;
@@ -14,6 +16,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
+import org.spongepowered.asm.mixin.injection.Redirect;
+
+import java.util.List;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
@@ -38,6 +43,23 @@ public abstract class RefitOrbitMixin {
                                                    @Local(argsOnly = true, ordinal = 1) float refitOpeningProgress) {
         if (!InteractiveRefitScreen.isOpenOrClosing()) return matrix;
         return RefitOrbit.apply(matrix, model, refitOpeningProgress);
+    }
+
+    /**
+     * Keeps TaC:Z's refit camera on the overview framing ({@code refit_view}) while the interactive refit screen is
+     * open: focusing a card frames its slot through {@link RefitOrbit#focus} instead — the same view, but reached by
+     * rotating/zooming about the gun's centre, so orbiting while focused still turns the gun about its middle rather
+     * than about TaC:Z's per-slot camera. (TaC:Z still records the focused slot type; only the framing is ours.)
+     */
+    @Redirect(
+            method = "applyFirstPersonPositioningTransform",
+            at = @At(value = "INVOKE",
+                    target = "Lcom/tacz/guns/client/model/BedrockGunModel;getRefitAttachmentViewPath("
+                            + "Lcom/tacz/guns/api/item/attachment/AttachmentType;)Ljava/util/List;"),
+            remap = false)
+    private static List<BedrockPart> renaissance$overviewFraming(BedrockGunModel model, AttachmentType type) {
+        return model.getRefitAttachmentViewPath(
+                InteractiveRefitScreen.isOpenOrClosing() ? AttachmentType.NONE : type);
     }
 
     /**

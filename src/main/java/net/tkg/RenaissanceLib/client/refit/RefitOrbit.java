@@ -15,6 +15,9 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import net.tkg.RenaissanceLib.client.RailAim;
+
+import javax.annotation.Nullable;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -50,23 +53,57 @@ public final class RefitOrbit {
 
     private static float targetYaw, targetPitch, targetZoom, targetPanX, targetPanY;
     private static float yaw, pitch, zoom, panX, panY;
+    /**
+     * The resting view the orbit returns to: neutral in the overview, the focused slot's framing when a card is
+     * focused ({@link #focus}). Zoom / pan limits are relative to it, so a slot's close-up isn't clamped away.
+     */
+    private static float baseYaw, basePitch, baseZoom, basePanX, basePanY;
+    /** A slot to frame, resolved on the next {@link #apply} (it needs that frame's matrix and model). */
+    @Nullable
+    private static AttachmentType pendingFocus;
     private static long lastUpdateNanos = 0L;
 
     private RefitOrbit() {}
 
-    /** Back to TaC:Z's default refit view. {@code instant} also snaps the displayed view (used when opening). */
+    /**
+     * Back to the resting view — the focused slot's framing, or neutral in the overview. {@code instant} (on open)
+     * also snaps the displayed view and drops any focus.
+     */
     public static void reset(boolean instant) {
-        targetYaw = targetPitch = targetZoom = targetPanX = targetPanY = 0f;
+        if (instant) {
+            baseYaw = basePitch = baseZoom = basePanX = basePanY = 0f;
+            pendingFocus = null;
+        }
+        targetYaw = baseYaw;
+        targetPitch = basePitch;
+        targetZoom = baseZoom;
+        targetPanX = basePanX;
+        targetPanY = basePanY;
         if (instant) {
             yaw = pitch = zoom = panX = panY = 0f;
             lastUpdateNanos = 0L;
         }
     }
 
+    /**
+     * Frame a slot the way TaC:Z's per-slot refit view ({@code refit_<type>_view}) would — but through this orbit,
+     * about the gun's centre ({@code RefitOrbitMixin} keeps TaC:Z's own camera on the overview framing while the
+     * screen is open, so there's only ever one pivot). {@code NONE} returns to the neutral overview.
+     */
+    public static void focus(AttachmentType type) {
+        if (type == null || type == AttachmentType.NONE) {
+            pendingFocus = null;
+            baseYaw = basePitch = baseZoom = basePanX = basePanY = 0f;
+            reset(false);
+        } else {
+            pendingFocus = type;
+        }
+    }
+
     /** Right-drag: slide the gun across the screen (camera plane) without turning it. */
     public static void pan(double dx, double dy) {
-        targetPanX = Mth.clamp(targetPanX + (float) dx * PAN_PER_PIXEL, -MAX_PAN, MAX_PAN);
-        targetPanY = Mth.clamp(targetPanY - (float) dy * PAN_PER_PIXEL, -MAX_PAN, MAX_PAN);
+        targetPanX = Mth.clamp(targetPanX + (float) dx * PAN_PER_PIXEL, basePanX - MAX_PAN, basePanX + MAX_PAN);
+        targetPanY = Mth.clamp(targetPanY - (float) dy * PAN_PER_PIXEL, basePanY - MAX_PAN, basePanY + MAX_PAN);
     }
 
     /** Drag by a screen delta in GUI pixels: right spins the near side right, down tips it down. */
@@ -77,7 +114,45 @@ public final class RefitOrbit {
 
     /** Scroll wheel: positive brings the gun closer. */
     public static void scroll(double delta) {
-        targetZoom = Mth.clamp(targetZoom + (float) delta * 0.08f, MIN_ZOOM, MAX_ZOOM);
+        targetZoom = Mth.clamp(targetZoom + (float) delta * 0.08f, baseZoom + MIN_ZOOM, baseZoom + MAX_ZOOM);
+    }
+
+    /**
+     * Turn a pending {@link #focus} into orbit values: the transform from the current (overview) view to TaC:Z's view
+     * of the slot, {@code D = W(slot)·W(current)⁻¹} with {@code W(M) = T(0,1.5,0)·M·T(0,-1.5,0)}, split into this
+     * orbit's form {@code T(v)·T(c)·Rx(pitch)·Ry(yaw)·T(-c)} (c = the gun's centre): pitch/yaw from D's rotation
+     * (roll, which refit views don't use, is dropped), then {@code v = t - c + R·c} for zoom (z) and pan (x/y).
+     */
+    private static void resolveFocus(Matrix4f m, BedrockGunModel model, AttachmentType type) {
+        List<BedrockPart> overviewPath = model.getRefitAttachmentViewPath(AttachmentType.NONE);
+        List<BedrockPart> slotPath = model.getRefitAttachmentViewPath(type);
+        if (overviewPath == null || slotPath == null) {
+            focus(AttachmentType.NONE); // the gun has no view for that slot — stay on the overview framing
+            return;
+        }
+        Matrix4f overview = RailAim.positioningNodeInverse(overviewPath);
+        Matrix4f slot = RailAim.positioningNodeInverse(slotPath);
+        // TaC:Z nudges the final matrix's m31 (a scope height offset) after blending; it rides on both views.
+        slot.m31(slot.m31() + (m.m31() - overview.m31()));
+        Matrix4f current = new Matrix4f().translate(0f, 1.5f, 0f).mul(m).translate(0f, -1.5f, 0f);
+        Matrix4f target = new Matrix4f().translate(0f, 1.5f, 0f).mul(slot).translate(0f, -1.5f, 0f);
+        Matrix4f d = target.mul(current.invert());
+        if (!d.isFinite()) return;
+
+        Vector3f euler = d.getEulerAnglesXYZ(new Vector3f()); // D ≈ Rx·Ry(·Rz)
+        float pitchDeg = Mth.clamp((float) Math.toDegrees(euler.x), -MAX_PITCH, MAX_PITCH);
+        float yawDeg = (float) Math.toDegrees(euler.y);
+        Vector3f c = new Matrix4f().translate(0f, 1.5f, 0f).mul(m).transformPosition(pivot(model));
+        Vector3f rc = new Matrix4f().rotate(Axis.XP.rotationDegrees(pitchDeg)).rotate(Axis.YP.rotationDegrees(yawDeg))
+                .transformPosition(new Vector3f(c));
+        Vector3f v = d.getTranslation(new Vector3f()).sub(c).add(rc);
+
+        baseYaw = yawDeg;
+        basePitch = pitchDeg;
+        baseZoom = v.z;
+        basePanX = -v.x; // applied as translate(-panX, -panY, zoom)
+        basePanY = -v.y;
+        reset(false);
     }
 
     /** Advance the displayed view toward the target by the real time since the last frame. */
@@ -99,6 +174,11 @@ public final class RefitOrbit {
      * opening progress). Returns {@code m} unchanged when there's nothing to apply.
      */
     public static Matrix4f apply(Matrix4f m, BedrockGunModel model, float weight) {
+        if (pendingFocus != null && model != null) {
+            AttachmentType type = pendingFocus;
+            pendingFocus = null;
+            resolveFocus(m, model, type);
+        }
         update();
         if (weight <= 0f || model == null) return m;
         float w = Mth.clamp(weight, 0f, 1f);
@@ -114,8 +194,9 @@ public final class RefitOrbit {
         Vector4f c4 = new Vector4f(pivot(model), 1f);
         new Matrix4f().translate(0f, 1.5f, 0f).mul(m).transform(c4);
         Vector3f c = new Vector3f(c4.x, c4.y, c4.z);
-        // Zoom along the view axis (camera looks down -Z), never pulling the centre into the near plane.
-        z = Math.min(z, -MIN_PIVOT_DEPTH - c.z);
+        // Zoom along the view axis (camera looks down -Z): the player's zoom never pulls the centre into the near
+        // plane — but a focused slot's own framing (the base) is always allowed, however close it sits.
+        z = Math.min(z, Math.max(baseZoom * w, -MIN_PIVOT_DEPTH - c.z));
 
         // Orbit about c, then undo the surrounding 1.5 translate so it slots in for m:
         // m' = T(0,-1.5,0) · T(pan, z) · T(c) · Rx(pitch) · Ry(yaw) · T(-c) · T(0,1.5,0) · m

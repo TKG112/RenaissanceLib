@@ -1,13 +1,17 @@
 package net.tkg.RenaissanceLib.mixin.client;
 
+import com.llamalad7.mixinextras.sugar.Local;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.client.event.CameraSetupEvent;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.client.event.ViewportEvent;
 import net.tkg.RenaissanceLib.client.underbarrel.UnderbarrelAim;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
@@ -30,5 +34,24 @@ public abstract class CameraSetupEventMixin {
             if (ubZoom > 0f) return ubZoom;
         }
         return iGun.getAimingZoom(stack);
+    }
+
+    /**
+     * The aimed gun-model FOV. TaC:Z eases the model FOV with {@code Mth.lerp(aimProgress, baseFov, aimedFov)},
+     * where {@code aimedFov} comes from the host gun's {@code zoom_model_fov} (or its scope's {@code views_fov});
+     * while the underbarrel's iron sight is active we substitute the underbarrel display's {@code zoom_model_fov},
+     * so its sight is drawn the same size on every host gun. Same call shape on the TaC:Z release and beta.
+     */
+    @ModifyArg(
+            method = "applyGunModelFovModifying",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Mth;lerp(FFF)F", remap = true),
+            index = 2)
+    private static float renaissance$underbarrelModelFov(float aimedFov,
+                                                        @Local(argsOnly = true) ViewportEvent.ComputeFov event) {
+        if (!(event.getCamera().getEntity() instanceof LivingEntity living)) return aimedFov;
+        ItemStack stack = living.getMainHandItem();
+        if (!UnderbarrelAim.isIronAimActive(stack)) return aimedFov;
+        float ubFov = UnderbarrelAim.modelFov(stack);
+        return ubFov > 0f ? ubFov : aimedFov;
     }
 }

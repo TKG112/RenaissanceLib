@@ -39,7 +39,8 @@ import java.util.List;
  *       (the same cross-model node concatenation the rail sights use, see {@code RailAim});</li>
  *   <li>the world <b>aim zoom</b> — the underbarrel display's {@code iron_zoom} instead of the host gun's.</li>
  * </ul>
- * Model FOV ({@code zoom_model_fov}) is intentionally left to the host — iron sights don't need it.
+ * and the aimed <b>model FOV</b> — the underbarrel display's {@code zoom_model_fov}, not the host gun's (each host
+ * gun has its own, which drew the same underbarrel sight bigger or smaller depending on the gun).
  */
 @OnlyIn(Dist.CLIENT)
 public final class UnderbarrelAim {
@@ -141,6 +142,15 @@ public final class UnderbarrelAim {
     }
 
     /** The underbarrel model TaC:Z actually draws (a beta variant can replace the index model). */
+    /**
+     * The underbarrel's aimed model FOV from its display's {@code zoom_model_fov} (TaC:Z defaults it to 70), or
+     * {@code <= 0} if there's no underbarrel display — the caller then keeps the host gun's value.
+     */
+    public static float modelFov(ItemStack gunItem) {
+        GunDisplay display = UnderbarrelClient.getUnderbarrelDisplay(Underbarrel.getInstalledUnderbarrel(gunItem));
+        return display == null ? 0f : display.getZoomModelFov();
+    }
+
     @Nullable
     private static BedrockAttachmentModel underbarrelModel(ItemStack gunItem) {
         IGun iGun = IGun.getIGunOrNull(gunItem);

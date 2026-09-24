@@ -57,6 +57,10 @@ public final class RefitCallouts {
     /** A card keeps its side until another side wins by this factor (stops flicker at the boundary). */
     private static final float SIDE_HYSTERESIS = 1.15f;
     private static final float EASE_TAU = 0.07f;
+    /** Fade time constant (seconds) for cards stepping aside while another card is focused. */
+    private static final float FADE_TAU = 0.08f;
+    /** Below this presence a card isn't drawn at all. */
+    private static final float MIN_PRESENCE = 0.02f;
     private static final int ACCENT = 0xFFD040;
 
     private enum Side { LEFT, RIGHT, TOP, BOTTOM }
@@ -78,6 +82,10 @@ public final class RefitCallouts {
         Side side;
         float targetX, targetY, x, y;
         boolean placed = false;
+        /** Whether the card is shown: all cards in the overview, only the focused one while a card is focused. */
+        boolean shown = true;
+        /** Eased 0..1 toward {@link #shown} — cards fade out on focus and back in on unfocus. */
+        float presence = 1f;
 
         Card(RefitSlot slot) {
             this.slot = slot;
@@ -133,6 +141,8 @@ public final class RefitCallouts {
             card.anchor = RefitProjection.project(RefitAnchors.anchor(entry.slot(), model, gun));
             card.docked = card.anchor == null || centre == null;
             card.farSide = !card.docked && card.anchor.depth() > centre.depth() + 0.01f;
+            // Focused on a card: the others step aside (fade out, no clicks) until the focus is dropped.
+            card.shown = selected == null || card.slot.equals(selected);
             visible.add(card);
         }
 
@@ -271,7 +281,7 @@ public final class RefitCallouts {
                 rb = rect[1] + rect[3] + SPACING;
         boolean moved = false;
         for (Card card : visible) {
-            if (card.docked || card.slot.equals(selected)) continue;
+            if (card.docked || !card.shown || card.slot.equals(selected)) continue;
             float x = card.targetX, y = card.targetY, r = x + card.w, b = y + CARD_H;
             if (r <= rx || x >= rr || b <= ry || y >= rb) continue; // clear already
             float toLeft = r - rx, toRight = rr - x, toUp = b - ry, toDown = rb - y;
@@ -342,7 +352,10 @@ public final class RefitCallouts {
         float dt = lastLayoutNanos == 0L ? 1f : Math.min((now - lastLayoutNanos) / 1_000_000_000f, 0.1f);
         lastLayoutNanos = now;
         float alpha = 1f - (float) Math.exp(-dt / EASE_TAU);
+        float fade = 1f - (float) Math.exp(-dt / FADE_TAU);
         for (Card card : visible) {
+            float presenceTarget = card.shown ? 1f : 0f;
+            card.presence = card.placed ? card.presence + (presenceTarget - card.presence) * fade : presenceTarget;
             if (!Float.isFinite(card.targetX) || !Float.isFinite(card.targetY)) continue; // never ease toward NaN
             // A card that ever went non-finite would stay NaN under easing (and draw at 0,0) — snap it back.
             if (!card.placed || !Float.isFinite(card.x) || !Float.isFinite(card.y)) {
@@ -396,7 +409,7 @@ public final class RefitCallouts {
         BufferBuilder buf = Tesselator.getInstance().getBuilder();
         buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
         for (Card card : visible) {
-            if (card.docked) continue;
+            if (card.docked || card.presence < MIN_PRESENCE) continue;
             int a = alpha(card, selected, hovered);
             float[] end = attachPoint(card);
             boolean lit = card == hovered || card.slot.equals(selected);
@@ -408,6 +421,7 @@ public final class RefitCallouts {
         RenderSystem.enableDepthTest();
 
         for (Card card : visible) {
+            if (card.presence < MIN_PRESENCE) continue;
             int a = alpha(card, selected, hovered);
             boolean lit = card == hovered || card.slot.equals(selected);
             if (!card.docked) {
@@ -420,10 +434,8 @@ public final class RefitCallouts {
     }
 
     private static int alpha(Card card, @Nullable RefitSlot selected, @Nullable Card hovered) {
-        if (card == hovered || card.slot.equals(selected)) return 255;
-        int a = card.farSide ? 130 : 235;
-        if (selected != null) a = Math.min(a, 90); // focused on another slot
-        return a;
+        int a = (card == hovered || card.slot.equals(selected)) ? 255 : (card.farSide ? 130 : 235);
+        return Math.round(a * card.presence); // fading out while another card is focused
     }
 
     /** Where the leader line meets the card: the middle of the card edge facing the part. */
@@ -461,7 +473,8 @@ public final class RefitCallouts {
                     GunRefitScreen.getSlotsTextureWidth(), 32);
         }
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        if (!card.attachment.isEmpty()) graphics.renderItem(card.attachment, ix + 1, iy + 1);
+        // Item icons ignore alpha — drop the icon once a stepping-aside card is half faded.
+        if (!card.attachment.isEmpty() && card.presence > 0.5f) graphics.renderItem(card.attachment, ix + 1, iy + 1);
 
         int tx = x + ICON + 6, maxText = w - ICON - 10;
         graphics.drawString(font, font.plainSubstrByWidth(card.slotName, maxText), tx, y + 3,
@@ -475,7 +488,8 @@ public final class RefitCallouts {
     @Nullable
     private Card cardAt(double mx, double my) {
         for (int i = visible.size() - 1; i >= 0; i--) {
-            if (visible.get(i).contains(mx, my)) return visible.get(i);
+            Card card = visible.get(i);
+            if (card.shown && card.contains(mx, my)) return card; // stepped-aside cards take no hover or clicks
         }
         return null;
     }

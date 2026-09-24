@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.PostPass;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.tkg.RenaissanceLib.RenaissanceConfig;
 import net.tkg.RenaissanceLib.RenaissanceLibMod;
 import net.tkg.RenaissanceLib.client.IrisCompat;
 import net.tkg.RenaissanceLib.mixin.client.PostChainAccessor;
@@ -18,7 +19,8 @@ import org.lwjgl.opengl.GL11;
  * chain runs on the main target after the world is drawn and <em>before</em> the first-person pass
  * ({@code GameRendererMixin}, at {@code renderItemInHand} HEAD) — the refit gun is the first-person model, drawn
  * next. The radius ramps with TaC:Z's refit opening progress so the blur fades in/out with the screen (including
- * after it closes, while TaC:Z's closing transition runs — {@link InteractiveRefitScreen#isOpenOrClosing()}).
+ * after it closes, while TaC:Z's closing transition runs — {@link InteractiveRefitScreen#isOpenOrClosing()}). The
+ * full radius is the client config's {@code refit_screen.backgroundBlur} (0 = off).
  *
  * <p>Skipped under an Iris/Oculus shader pack: the world isn't on the main target mid-frame there (the same reason
  * the scope post-shader uses its end-of-frame path).
@@ -26,7 +28,6 @@ import org.lwjgl.opengl.GL11;
 @OnlyIn(Dist.CLIENT)
 public final class RefitBlur {
     private static final ResourceLocation BLUR = ResourceLocation.fromNamespaceAndPath("minecraft", "shaders/post/blur.json");
-    private static final float MAX_RADIUS = 12f;
 
     private static PostChain chain;
     private static boolean failed = false;
@@ -46,7 +47,7 @@ public final class RefitBlur {
         // Whole-pixel radii only: vanilla's blur.fsh divides by (2*Radius + 1) but samples whole steps, so a
         // fractional radius dims the image (by up to ~40%) — ramping through fractions made the screen pulse dark
         // while opening/closing. Below 1 there's nothing to blur.
-        float radius = Math.round(MAX_RADIUS * progress);
+        float radius = Math.round(RenaissanceConfig.CLIENT.refitBlur.get() * progress);
         if (radius < 1f) return;
         for (PostPass pass : ((PostChainAccessor) blur).renaissance$getPasses()) {
             pass.getEffect().safeGetUniform("Radius").set(radius);

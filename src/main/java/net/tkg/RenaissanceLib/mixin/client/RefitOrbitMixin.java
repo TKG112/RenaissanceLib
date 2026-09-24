@@ -41,7 +41,7 @@ public abstract class RefitOrbitMixin {
     private static Matrix4f renaissance$refitOrbit(Matrix4f matrix,
                                                    @Local(argsOnly = true) BedrockGunModel model,
                                                    @Local(argsOnly = true, ordinal = 1) float refitOpeningProgress) {
-        if (!InteractiveRefitScreen.isOpenOrClosing()) return matrix;
+        if (!InteractiveRefitScreen.isFreeCamera()) return matrix;
         return RefitOrbit.apply(matrix, model, refitOpeningProgress);
     }
 
@@ -59,7 +59,7 @@ public abstract class RefitOrbitMixin {
             remap = false)
     private static List<BedrockPart> renaissance$overviewFraming(BedrockGunModel model, AttachmentType type) {
         return model.getRefitAttachmentViewPath(
-                InteractiveRefitScreen.isOpenOrClosing() ? AttachmentType.NONE : type);
+                InteractiveRefitScreen.isFreeCamera() ? AttachmentType.NONE : type);
     }
 
     /**

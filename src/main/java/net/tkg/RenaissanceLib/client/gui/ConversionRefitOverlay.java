@@ -98,7 +98,7 @@ public final class ConversionRefitOverlay {
     @SubscribeEvent
     public static void onRenderScreen(ScreenEvent.Render.Post event) {
         // The interactive refit screen shows this slot as a card of its own (RefitCallouts / RefitPicker).
-        if (!(event.getScreen() instanceof GunRefitScreen screen) || screen instanceof InteractiveRefitScreen) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || InteractiveRefitScreen.hasCards(screen)) return;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
         ItemStack gunItem = player.getMainHandItem();
@@ -172,7 +172,7 @@ public final class ConversionRefitOverlay {
 
     @SubscribeEvent
     public static void onMouseClick(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen) || screen instanceof InteractiveRefitScreen) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || InteractiveRefitScreen.hasCards(screen)) return;
         if (event.getButton() != 0) return;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;

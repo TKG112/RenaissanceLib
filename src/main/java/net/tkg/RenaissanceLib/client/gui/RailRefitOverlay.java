@@ -175,7 +175,7 @@ public final class RailRefitOverlay {
 
     @SubscribeEvent
     public static void onRenderScreen(ScreenEvent.Render.Post event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen) || event.getScreen() instanceof InteractiveRefitScreen) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || InteractiveRefitScreen.hasCards(event.getScreen())) return;
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
@@ -303,7 +303,7 @@ public final class RailRefitOverlay {
 
     @SubscribeEvent
     public static void onMouseClick(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (!(event.getScreen() instanceof GunRefitScreen screen) || event.getScreen() instanceof InteractiveRefitScreen) return;
+        if (!(event.getScreen() instanceof GunRefitScreen screen) || InteractiveRefitScreen.hasCards(event.getScreen())) return;
         if (event.getButton() != 0) return;
 
         LocalPlayer player = Minecraft.getInstance().player;
@@ -418,7 +418,7 @@ public final class RailRefitOverlay {
     /** Ends a laser-slider drag and persists the chosen colour to the server. */
     @SubscribeEvent
     public static void onMouseRelease(ScreenEvent.MouseButtonReleased.Pre event) {
-        if (!(event.getScreen() instanceof GunRefitScreen) || event.getScreen() instanceof InteractiveRefitScreen) return;
+        if (!(event.getScreen() instanceof GunRefitScreen) || InteractiveRefitScreen.hasCards(event.getScreen())) return;
         if (draggingSlider == -1) return;
         draggingSlider = -1;
         LocalPlayer player = Minecraft.getInstance().player;

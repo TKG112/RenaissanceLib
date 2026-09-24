@@ -12,6 +12,7 @@ import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.tkg.RenaissanceLib.RenaissanceConfig;
 import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
@@ -29,6 +30,10 @@ import java.util.List;
  * conversion kit — {@link RefitSlot}), replacing TaC:Z's slot buttons and our old refit-row overlays, with the
  * selected card's options as sub-cards below it ({@link RefitPicker}), and a P-toggled pivot/bounding-box debug
  * overlay ({@link RefitDebug}).
+ *
+ * <p>The cards and the free camera are client options ({@code refit_screen.slotCards}, off by default, and
+ * {@code refit_screen.freeCamera}), read when the screen opens. Without cards the screen keeps TaC:Z's slot buttons
+ * and list (and our old refit-row overlays run); without the free camera TaC:Z's own per-slot views frame the gun.
  */
 @OnlyIn(Dist.CLIENT)
 public class InteractiveRefitScreen extends GunRefitScreen {
@@ -36,12 +41,19 @@ public class InteractiveRefitScreen extends GunRefitScreen {
 
     /** Our screen was the last refit screen shown — its blur/orbit keep easing out after it closes. */
     private static boolean lingering = false;
+    /** The last-opened screen's free-camera setting, so the orbit eases out with it after it closes. */
+    private static boolean lingeringFreeCamera = false;
 
+    private final boolean cards = RenaissanceConfig.CLIENT.refitCards.get();
+    private final boolean freeCamera = RenaissanceConfig.CLIENT.refitFreeCamera.get();
     private final RefitCallouts callouts = new RefitCallouts();
     private final RefitPicker picker = new RefitPicker();
     /** The focused card (a TaC:Z slot or one of ours), or {@code null} in the overview. */
     @Nullable
     private RefitSlot selected;
+    /** The TaC:Z view the orbit last framed ({@link RefitOrbit#focus}); null = not yet this open. */
+    @Nullable
+    private AttachmentType framed;
     private boolean orbiting = false;
     private boolean panning = false;
     private long lastEmptyClickMs = 0L;
@@ -50,6 +62,20 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         super();
         RefitOrbit.reset(true); // every open starts from TaC:Z's default refit view (init() also runs on refresh)
         lingering = true;
+        lingeringFreeCamera = freeCamera;
+    }
+
+    /** Whether {@code screen} is ours with slot cards on — our old refit-row overlays stand down for it. */
+    public static boolean hasCards(Screen screen) {
+        return screen instanceof InteractiveRefitScreen s && s.cards;
+    }
+
+    /**
+     * {@link #isOpenOrClosing()} with the free camera on: the orbit turns/zooms the gun, and TaC:Z's refit camera
+     * stays on the overview (slots are framed through the orbit). Off, TaC:Z's per-slot views work as usual.
+     */
+    public static boolean isFreeCamera() {
+        return isOpenOrClosing() && lingeringFreeCamera;
     }
 
     /**
@@ -64,10 +90,11 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         return lingering;
     }
 
-    /** TaC:Z's layout, minus its slot buttons — the floating cards replace them. */
+    /** TaC:Z's layout, minus its slot buttons when the floating cards replace them. */
     @Override
     public void init() {
         super.init();
+        if (!cards) return;
         List<GuiEventListener> slotButtons = children().stream()
                 .filter(GunAttachmentSlot.class::isInstance).map(GuiEventListener.class::cast).toList();
         slotButtons.forEach(this::removeWidget);
@@ -84,10 +111,6 @@ public class InteractiveRefitScreen extends GunRefitScreen {
         AttachmentType view = next == null ? AttachmentType.NONE : next.cameraType();
         if (RefitTransform.getCurrentTransformType() != view && !RefitTransform.changeRefitScreenView(view)) return;
         selected = next;
-        // Frame the slot through our orbit (TaC:Z's own camera stays on the overview — RefitOrbitMixin), so turning
-        // the gun while focused still pivots about its centre; the player can orbit freely from there, and R goes
-        // back to this framing.
-        RefitOrbit.focus(view);
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
         init();
     }
@@ -96,12 +119,15 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // TaC:Z's widgets first — the picker's options sit over the (faded) cards of other slots.
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.click(mouseX, mouseY)) return true;
-        RefitSlot card = callouts.slotAt(mouseX, mouseY);
-        if (card != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            selectSlot(card);
-            return true;
+        if (cards) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.click(mouseX, mouseY)) return true;
+            RefitSlot card = callouts.slotAt(mouseX, mouseY);
+            if (card != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                selectSlot(card);
+                return true;
+            }
         }
+        if (!freeCamera) return false;
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             long now = System.currentTimeMillis();
             if (now - lastEmptyClickMs <= DOUBLE_CLICK_MS) {
@@ -122,7 +148,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.dragLaser(mouseX)) return true;
+        if (cards && button == GLFW.GLFW_MOUSE_BUTTON_LEFT && picker.dragLaser(mouseX)) return true;
         if (orbiting && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             RefitOrbit.drag(dragX, dragY);
             return true;
@@ -138,7 +164,7 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             orbiting = false;
-            picker.releaseLaser();
+            if (cards) picker.releaseLaser();
         }
         if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) panning = false;
         return super.mouseReleased(mouseX, mouseY, button);
@@ -147,13 +173,14 @@ public class InteractiveRefitScreen extends GunRefitScreen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (super.mouseScrolled(mouseX, mouseY, delta)) return true;
+        if (!freeCamera) return false;
         RefitOrbit.scroll(delta);
         return true;
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_R) {
+        if (freeCamera && keyCode == GLFW.GLFW_KEY_R) {
             RefitOrbit.reset(false);
             return true;
         }
@@ -170,6 +197,19 @@ public class InteractiveRefitScreen extends GunRefitScreen {
      */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Whenever TaC:Z's view changes (a card, or TaC:Z's own slot buttons without cards), frame it through our
+        // orbit — TaC:Z's camera stays on the overview (RefitOrbitMixin) — so turning the gun while focused still
+        // pivots about its centre; the player can orbit freely from there, and R goes back to this framing.
+        AttachmentType view = RefitTransform.getCurrentTransformType();
+        if (freeCamera && view != framed) {
+            RefitOrbit.focus(view);
+            framed = view;
+        }
+        if (!cards) {
+            super.render(graphics, mouseX, mouseY, partialTick);
+            RefitDebug.draw(graphics);
+            return;
+        }
         // Keep the focus honest: TaC:Z's view moved elsewhere, or the focused card vanished (e.g. its rail host or
         // the underbarrel was removed) — back to the overview.
         if (selected != null && RefitTransform.getCurrentTransformType() != selected.cameraType()) selected = null;

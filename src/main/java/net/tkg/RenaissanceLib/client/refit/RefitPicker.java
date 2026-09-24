@@ -70,6 +70,8 @@ public final class RefitPicker {
     private static final int ACCENT = 0xFFD040;
     /** TaC:Z's variant / slot-adapter button size (beta) — its "Show Diagrams" toggle is the same class, bigger. */
     private static final int VARIANT_W = 78, VARIANT_H = 12;
+    /** Where TaC:Z draws the stats panel from (GunRefitScreen.render → GunPropertyDiagrams.draw at 11, 11). */
+    private static final int STATS_PANEL_TOP = 11;
     private static final int SLIDER_W = 140, SLIDER_H = 10, SLIDER_BLOCK_H = 10 + SLIDER_H + 6 + SLIDER_H;
     private static final long INTERACT_COOLDOWN_MS = 250;
     private static final int OFF_SCREEN = -1000;
@@ -275,8 +277,34 @@ public final class RefitPicker {
     }
 
     private static boolean isVariantButton(GuiEventListener child) {
-        return child instanceof AbstractWidget w && "FlatColorButton".equals(w.getClass().getSimpleName())
-                && w.getWidth() == VARIANT_W && w.getHeight() == VARIANT_H;
+        return isFlatColorButton(child) && ((AbstractWidget) child).getWidth() == VARIANT_W
+                && ((AbstractWidget) child).getHeight() == VARIANT_H;
+    }
+
+    private static boolean isFlatColorButton(GuiEventListener child) {
+        return child instanceof AbstractWidget w && "FlatColorButton".equals(w.getClass().getSimpleName());
+    }
+
+    /**
+     * TaC:Z's stats area {x, y, w, h} — the "Show/Hide Diagrams" toggle (both versions: a FlatColorButton at
+     * (11, 11) when hidden) plus, when shown, the stats panel TaC:Z draws from (11, 11) down to the toggle's top —
+     * or null if there is no toggle. Its FlatColorButtons are the ones that aren't our repositioned variant buttons.
+     */
+    @Nullable
+    public static float[] statsRect(List<? extends GuiEventListener> children) {
+        float x = Float.POSITIVE_INFINITY, y = Float.POSITIVE_INFINITY, r = Float.NEGATIVE_INFINITY, b = Float.NEGATIVE_INFINITY;
+        for (GuiEventListener child : children) {
+            if (!isFlatColorButton(child) || isVariantButton(child)) continue;
+            AbstractWidget w = (AbstractWidget) child;
+            if (!w.visible) continue;
+            x = Math.min(x, w.getX());
+            y = Math.min(y, w.getY());
+            r = Math.max(r, w.getX() + w.getWidth());
+            b = Math.max(b, w.getY() + w.getHeight());
+        }
+        if (x > r) return null;
+        y = Math.min(y, STATS_PANEL_TOP);
+        return new float[]{x, y, r - x, b - y};
     }
 
     /** Move TaC:Z's list widgets out of the way (one of our slots is selected, or none). */

@@ -104,17 +104,21 @@ public final class RefitCallouts {
     private long lastLayoutNanos = 0L;
     @Nullable
     private RefitSlot selected;
-    /** Screen area the other cards move out of — the selected card's option list {x, y, w, h} — or null. */
+    /** The selected card's option list {x, y, w, h}, which the other cards move out of — or null. */
     @Nullable
-    private float[] keepClear;
+    private float[] listRect;
+    /** Other screen areas every card moves out of (TaC:Z's stats panel and its toggle), each {x, y, w, h}. */
+    private List<float[]> obstacles = List.of();
 
     /**
      * Recompute cards and layout for this frame ({@code selected} = the focused slot, or {@code null} in the
-     * overview). Call once per screen render, before {@link #draw}.
+     * overview; {@code listRect} = its option list; {@code obstacles} = other areas no card may cover). Call once per
+     * screen render, before {@link #draw}.
      */
-    public void layout(@Nullable RefitSlot selected, @Nullable float[] keepClear) {
+    public void layout(@Nullable RefitSlot selected, @Nullable float[] listRect, List<float[]> obstacles) {
         this.selected = selected;
-        this.keepClear = keepClear;
+        this.listRect = listRect;
+        this.obstacles = obstacles;
         visible.clear();
         Minecraft mc = Minecraft.getInstance();
         BedrockGunModel model = RefitProjection.model();
@@ -254,17 +258,11 @@ public final class RefitCallouts {
         }
         var window = Minecraft.getInstance().getWindow();
         float screenW = window.getGuiScaledWidth(), screenH = window.getGuiScaledHeight();
-        for (Map.Entry<Side, List<Card>> entry : bySide.entrySet()) {
-            boolean vertical = entry.getKey() == Side.LEFT || entry.getKey() == Side.RIGHT;
-            spread(entry.getValue(), vertical, vertical ? screenH : screenW);
-        }
-        // Cards under the selected card's option list move out of it, then the sides re-space.
-        if (keepClear != null && moveOutOf(keepClear, screenW, screenH)) {
-            for (Map.Entry<Side, List<Card>> entry : bySide.entrySet()) {
-                boolean vertical = entry.getKey() == Side.LEFT || entry.getKey() == Side.RIGHT;
-                spread(entry.getValue(), vertical, vertical ? screenH : screenW);
-            }
-        }
+        spreadAll(bySide, screenW, screenH);
+        // Cards under the option list or TaC:Z's stats panel move out of them, then the sides re-space; re-spacing can
+        // nudge a card back in, so once more, and a last push settles whatever still overlaps.
+        for (int pass = 0; pass < 2 && moveOutOfAll(screenW, screenH); pass++) spreadAll(bySide, screenW, screenH);
+        moveOutOfAll(screenW, screenH);
         for (Card card : visible) {
             if (card.docked) continue;
             card.targetX = clamp(card.targetX, SCREEN_MARGIN, screenW - SCREEN_MARGIN - card.w);
@@ -272,16 +270,30 @@ public final class RefitCallouts {
         }
     }
 
+    private static void spreadAll(Map<Side, List<Card>> bySide, float screenW, float screenH) {
+        for (Map.Entry<Side, List<Card>> entry : bySide.entrySet()) {
+            boolean vertical = entry.getKey() == Side.LEFT || entry.getKey() == Side.RIGHT;
+            spread(entry.getValue(), vertical, vertical ? screenH : screenW);
+        }
+    }
+
+    /** {@link #moveOutOf} the option list (the selected card stays — the list hangs from it) and every obstacle. */
+    private boolean moveOutOfAll(float screenW, float screenH) {
+        boolean moved = listRect != null && moveOutOf(listRect, false, screenW, screenH);
+        for (float[] rect : obstacles) moved |= moveOutOf(rect, true, screenW, screenH);
+        return moved;
+    }
+
     /**
-     * Push every on-gun card (except the selected one — the list hangs from it) that overlaps {@code rect} out of it
-     * by the shortest way that stays on screen: left, right, up or down. Returns whether anything moved.
+     * Push every on-gun card (the selected one only if {@code moveSelected}) that overlaps {@code rect} out of it by
+     * the shortest way that stays on screen: left, right, up or down. Returns whether anything moved.
      */
-    private boolean moveOutOf(float[] rect, float screenW, float screenH) {
+    private boolean moveOutOf(float[] rect, boolean moveSelected, float screenW, float screenH) {
         float rx = rect[0] - SPACING, ry = rect[1] - SPACING, rr = rect[0] + rect[2] + SPACING,
                 rb = rect[1] + rect[3] + SPACING;
         boolean moved = false;
         for (Card card : visible) {
-            if (card.docked || !card.shown || card.slot.equals(selected)) continue;
+            if (card.docked || !card.shown || (!moveSelected && card.slot.equals(selected))) continue;
             float x = card.targetX, y = card.targetY, r = x + card.w, b = y + CARD_H;
             if (r <= rx || x >= rr || b <= ry || y >= rb) continue; // clear already
             float toLeft = r - rx, toRight = rr - x, toUp = b - ry, toDown = rb - y;

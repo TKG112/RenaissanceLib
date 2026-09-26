@@ -336,7 +336,7 @@ public final class RefitPicker {
         if (slot instanceof RefitSlot.Rail r) {
             RailsModifier.RailSlot rail = railSlotAt(gun, r.path());
             return rail == null ? List.of()
-                    : RailRefitOverlay.collectInventorySights(player, rail.getAllow(), r.path().hostType());
+                    : RailRefitOverlay.collectInventorySights(player, rail, r.path().hostType());
         }
         if (slot instanceof RefitSlot.UnderbarrelSlot u) {
             return UnderbarrelAttachmentRefitOverlay.collectInventory(player, u.type());

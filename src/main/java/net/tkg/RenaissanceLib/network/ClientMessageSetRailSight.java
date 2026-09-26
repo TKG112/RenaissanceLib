@@ -95,10 +95,11 @@ public class ClientMessageSetRailSight {
                     IAttachment attachment = IAttachment.getIAttachmentOrNull(optic);
                     if (attachment == null) return;
                     // Coarse type authorization against the target slot's allow categories (the scope/sight
-                    // refinement is client display data, enforced in the picker UI).
-                    List<String> allow = targetSlotAllow(gunItem, path);
-                    if (allow == null
-                            || !ScopeRails.typeAllowed(allow, attachment.getType(optic), path.hostType())) return;
+                    // refinement is client display data, enforced in the picker UI), plus its allow_attachments.
+                    RailsModifier.RailSlot target = targetSlot(gunItem, path);
+                    if (target == null
+                            || !ScopeRails.typeAllowed(target.getAllow(), attachment.getType(optic), path.hostType())
+                            || !target.acceptsAttachment(attachment.getAttachmentId(optic))) return;
 
                     ItemStack previous = RailStorage.getMountedOnGun(gunItem, path);
                     if (!previous.isEmpty() && !player.getInventory().add(previous)) {
@@ -142,8 +143,8 @@ public class ClientMessageSetRailSight {
         return spec == null ? List.of() : spec.getSlots();
     }
 
-    /** The {@code allow} categories of the slot {@code path} targets, or {@code null} if unresolvable. */
-    private static List<String> targetSlotAllow(ItemStack gunItem, MountPath path) {
+    /** The rail slot {@code path} targets, or {@code null} if unresolvable. */
+    private static RailsModifier.RailSlot targetSlot(ItemStack gunItem, MountPath path) {
         ItemStack host = RailStorage.getHostItem(gunItem, path.hostType());
         if (host.isEmpty()) return null;
         for (int d = 0; d < path.depth() - 1; d++) {
@@ -153,6 +154,6 @@ public class ClientMessageSetRailSight {
         List<RailsModifier.RailSlot> slots = slotsOf(gunItem, path.hostType(), host, path.depth() == 1);
         int slot = path.last();
         if (slot < 0 || slot >= slots.size()) return null;
-        return slots.get(slot).getAllow();
+        return slots.get(slot);
     }
 }

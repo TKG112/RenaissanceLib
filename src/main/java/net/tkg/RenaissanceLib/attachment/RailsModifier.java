@@ -8,6 +8,8 @@ import com.tacz.guns.api.modifier.CacheValue;
 import com.tacz.guns.api.modifier.IAttachmentModifier;
 import com.tacz.guns.api.modifier.JsonProperty;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
+import com.tacz.guns.util.AllowAttachmentTagMatcher;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
@@ -22,7 +24,9 @@ import java.util.List;
  * <p>Each rail slot names a mount {@code node} in the scope model, a {@code type} (informational, drives
  * the slot label, e.g. {@code canted}) and an optional {@code allow} category restricting what may be
  * mounted: {@code "scope"} (scope-type optics only), {@code "sight"} (pure sight-type optics only) or
- * {@code "any"} (default). This modifier only carries the config; the slots, storage, rendering and
+ * {@code "any"} (default). An optional {@code allow_attachments} narrows it further to specific attachments, the
+ * same way a gun's allow list does: attachment ids and {@code #}-prefixed TaC:Z attachment tags (an attachment must
+ * pass both). This modifier only carries the config; the slots, storage, rendering and
  * aim/zoom routing are layered on top by the rail system.
  *
  * <pre>
@@ -30,7 +34,8 @@ import java.util.List;
  *   "aim_self": false,
  *   "slots": [
  *     { "node": "main",     "type": "main",   "allow": "scope" },
- *     { "node": "canted_1", "type": "canted", "allow": "sight" }
+ *     { "node": "canted_1", "type": "canted", "allow": "sight",
+ *       "allow_attachments": ["#tacz:pistol_sight", "mypack:my_micro_dot"] }
  *   ]
  * }
  * </pre>
@@ -74,7 +79,8 @@ public class RailsModifier implements IAttachmentModifier<RailsModifier.Spec, Bo
                 String type = slotObj.has("type") && slotObj.get("type").isJsonPrimitive()
                         ? slotObj.get("type").getAsString()
                         : "canted";
-                slots.add(new RailSlot(node, type, parseAllow(slotObj.get("allow"))));
+                slots.add(new RailSlot(node, type, parseAllow(slotObj.get("allow")),
+                        parseAllowAttachments(slotObj.get("allow_attachments"))));
             }
             return new RailsJsonProperty(slots.isEmpty() ? null : new Spec(slots, aimSelf));
         } catch (Exception e) {
@@ -99,6 +105,22 @@ public class RailsModifier implements IAttachmentModifier<RailsModifier.Spec, Bo
         }
         if (allow.isEmpty()) allow.add(RailSlot.ALLOW_ANY);
         return allow;
+    }
+
+    /**
+     * Parses a slot's {@code allow_attachments}: attachment ids and {@code #}-prefixed attachment tags, as a single
+     * string or an array. Absent or empty = no restriction beyond {@code allow}.
+     */
+    private static List<String> parseAllowAttachments(@Nullable JsonElement element) {
+        List<String> entries = new ArrayList<>();
+        if (element != null && element.isJsonArray()) {
+            for (JsonElement e : element.getAsJsonArray()) {
+                if (e.isJsonPrimitive() && !e.getAsString().isBlank()) entries.add(e.getAsString().trim());
+            }
+        } else if (element != null && element.isJsonPrimitive() && !element.getAsString().isBlank()) {
+            entries.add(element.getAsString().trim());
+        }
+        return entries;
     }
 
     @Override
@@ -141,8 +163,8 @@ public class RailsModifier implements IAttachmentModifier<RailsModifier.Spec, Bo
 
     /**
      * One rail mount point: a node name in the host model, an informational {@code type} (drives the slot
-     * label), and an {@code allow} list of categories restricting what may be mounted. A slot accepts an
-     * item if it matches <em>any</em> listed category.
+     * label), an {@code allow} list of categories restricting what may be mounted (an item must match <em>any</em>
+     * of them), and an optional {@code allow_attachments} list of attachment ids / {@code #}tags it must also match.
      */
     public static final class RailSlot {
         /** Accepts anything (default). */
@@ -157,11 +179,17 @@ public class RailsModifier implements IAttachmentModifier<RailsModifier.Spec, Bo
         private final String node;
         private final String type;
         private final List<String> allow;
+        private final List<String> allowAttachments;
 
         public RailSlot(String node, String type, List<String> allow) {
+            this(node, type, allow, List.of());
+        }
+
+        public RailSlot(String node, String type, List<String> allow, @Nullable List<String> allowAttachments) {
             this.node = node;
             this.type = type;
             this.allow = (allow == null || allow.isEmpty()) ? List.of(ALLOW_ANY) : List.copyOf(allow);
+            this.allowAttachments = allowAttachments == null ? List.of() : List.copyOf(allowAttachments);
         }
 
         public String getNode() {
@@ -175,6 +203,30 @@ public class RailsModifier implements IAttachmentModifier<RailsModifier.Spec, Bo
         /** The categories this slot accepts (a mount matches if it matches any of them). */
         public List<String> getAllow() {
             return allow;
+        }
+
+        /** The slot's {@code allow_attachments} entries (ids and {@code #}tags); empty = no restriction. */
+        public List<String> getAllowAttachments() {
+            return allowAttachments;
+        }
+
+        /**
+         * Whether {@code attachmentId} passes {@code allow_attachments}: no list, or it names the id, or one of its
+         * {@code #}tags contains it (TaC:Z's tag files, nested tags included). The {@code allow} categories are
+         * checked separately.
+         */
+        public boolean acceptsAttachment(@Nullable ResourceLocation attachmentId) {
+            if (allowAttachments.isEmpty()) return true;
+            if (attachmentId == null) return false;
+            for (String entry : allowAttachments) {
+                if (entry.startsWith("#")) {
+                    ResourceLocation tag = ResourceLocation.tryParse(entry.substring(1));
+                    if (tag != null && AllowAttachmentTagMatcher.matchTag(tag, attachmentId)) return true;
+                } else if (attachmentId.equals(ResourceLocation.tryParse(entry))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

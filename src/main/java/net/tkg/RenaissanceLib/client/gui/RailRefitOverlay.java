@@ -236,7 +236,7 @@ public final class RailRefitOverlay {
                         inRect(mouseX, mouseY, selX + UNLOAD_DX, panelY, UNLOAD_SIZE, UNLOAD_SIZE));
             } else {
                 List<Integer> optics = collectInventorySights(player,
-                        focusedSlots.get(selectedSlot).getAllow(), viewPath.hostType());
+                        focusedSlots.get(selectedSlot), viewPath.hostType());
                 for (int j = 0; j < optics.size(); j++) {
                     int y = panelY + j * SIZE;
                     drawSlot(graphics, selX, y, inSlot(mouseX, mouseY, selX, y));
@@ -260,7 +260,7 @@ public final class RailRefitOverlay {
             int selX = railSlotX(displayX, selectedSlot);
             int panelY = panelY(gunItem);
             List<Integer> optics = collectInventorySights(player,
-                    focusedSlots.get(selectedSlot).getAllow(), viewPath.hostType());
+                    focusedSlots.get(selectedSlot), viewPath.hostType());
             for (int j = 0; j < optics.size(); j++) {
                 if (inSlot(mouseX, mouseY, selX, panelY + j * SIZE)) {
                     graphics.renderTooltip(font, player.getInventory().getItem(optics.get(j)), mouseX, mouseY);
@@ -350,7 +350,7 @@ public final class RailRefitOverlay {
                 }
             } else {
                 List<Integer> optics = collectInventorySights(player,
-                        focusedSlots.get(selectedSlot).getAllow(), viewPath.hostType());
+                        focusedSlots.get(selectedSlot), viewPath.hostType());
                 for (int j = 0; j < optics.size(); j++) {
                     if (inSlot(mouseX, mouseY, selX, panelY + j * SIZE)) {
                         if (!onCooldown()) {
@@ -460,7 +460,7 @@ public final class RailRefitOverlay {
         if (selectedSlot >= 0 && selectedSlot < slots.size()) {
             ItemStack mounted = mountedAt(gunItem, selectedSlot);
             int panelHeight = mounted.isEmpty()
-                    ? collectInventorySights(player, slots.get(selectedSlot).getAllow(), viewPath.hostType()).size() * SIZE
+                    ? collectInventorySights(player, slots.get(selectedSlot), viewPath.hostType()).size() * SIZE
                     : (UNLOAD_SIZE + 2);
             y += panelHeight + GROUP_GAP;
         }
@@ -589,14 +589,15 @@ public final class RailRefitOverlay {
         return v < 0f ? 0f : (v > 1f ? 1f : v);
     }
 
-    /** Inventory slot indices holding an attachment accepted by a slot (with the given {@code allow}) on {@code hostType}. */
-    public static List<Integer> collectInventorySights(LocalPlayer player, List<String> allow, AttachmentType hostType) {
+    /** Inventory slot indices holding an attachment accepted by {@code slot} on {@code hostType}. */
+    public static List<Integer> collectInventorySights(LocalPlayer player, RailsModifier.RailSlot slot,
+                                                       AttachmentType hostType) {
         List<Integer> result = new ArrayList<>();
         Inventory inventory = player.getInventory();
         for (int i = 0; i < inventory.getContainerSize() && result.size() < MAX_PICKER; i++) {
             ItemStack stack = inventory.getItem(i);
             IAttachment attachment = IAttachment.getIAttachmentOrNull(stack);
-            if (attachment != null && slotAccepts(allow, stack, attachment, hostType)) {
+            if (attachment != null && slotAccepts(slot, stack, attachment, hostType)) {
                 result.add(i);
             }
         }
@@ -604,18 +605,20 @@ public final class RailRefitOverlay {
     }
 
     /**
-     * Whether an attachment matches any of a slot's {@code allow} categories on a host of {@code hostType}.
+     * Whether an attachment passes a slot's {@code allow_attachments} ids / tags and matches any of its {@code allow}
+     * categories on a host of {@code hostType}.
      * Scope/sight are refined here with the client display flags ({@code isScope}/{@code isSight}); other
      * categories match by TaC:Z attachment type. Enforces optics-only-on-scope-hosts: a non-scope host never
      * accepts a SCOPE mount. An optic whose client index can't be resolved is treated as a scope (fail-open).
      */
-    private static boolean slotAccepts(List<String> allow, ItemStack stack, IAttachment attachment,
+    private static boolean slotAccepts(RailsModifier.RailSlot slot, ItemStack stack, IAttachment attachment,
                                        AttachmentType hostType) {
         AttachmentType type = attachment.getType(stack);
         if (hostType != AttachmentType.SCOPE && type == AttachmentType.SCOPE) return false;
+        if (!slot.acceptsAttachment(attachment.getAttachmentId(stack))) return false;
         ClientAttachmentIndex index =
                 TimelessAPI.getClientAttachmentIndex(attachment.getAttachmentId(stack)).orElse(null);
-        for (String category : allow) {
+        for (String category : slot.getAllow()) {
             if (RailsModifier.RailSlot.ALLOW_ANY.equals(category)) return true;
             if (RailsModifier.RailSlot.ALLOW_SCOPE.equals(category)) {
                 if (type == AttachmentType.SCOPE && (index == null || index.isScope())) return true;

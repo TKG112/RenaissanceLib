@@ -40,7 +40,8 @@ In the host attachment's **data** file (a scope, a grip, a handguard — any slo
 "rails": {
   "aim_self": false,          // does the mount's OWN optic view take part in the zoom cycle?
   "slots": [
-    { "node": "canted_1", "type": "canted", "allow": "scope" },
+    { "node": "canted_1", "type": "canted", "allow": "sight",
+      "allow_attachments": ["#tacz:pistol_sight"] },   // optional: only these attachments
     { "node": "laser_pos", "type": "laser_mount", "allow": "laser" }
   ]
 }
@@ -55,11 +56,17 @@ In the host attachment's **data** file (a scope, a grip, a handguard — any slo
 - **`allow`** restricts what may be mounted: `"scope"`, `"sight"`, `"laser"`, `"muzzle"`, `"grip"`,
   `"stock"`, `"extended_mag"`, or `"any"` (default). A single string or an array. These *are* real
   attachment types. Remember the firm rule: `scope`/`sight` only work on a **scope host**.
+- **`allow_attachments`** (optional) narrows a slot to specific attachments, written like a gun's
+  allow list: attachment ids (`"tacz:sight_rmr_dot"`) and `#`-prefixed TaC:Z attachment tags
+  (`"#tacz:pistol_sight"`, from `data/<ns>/tacz_tags/attachments/<name>.json`; tags can include other tags).
+  A single string or an array. An attachment must pass **both** `allow` and `allow_attachments`. Leave it out
+  to accept anything of the allowed type. Checked on the server too, so it can't be bypassed.
 - **`aim_self`** (default `false`): a bare optic mount (e.g. a canted rail with no optic of its own) leaves
   this `false` so the cycle walks only the mounted sights. A real scope that *also* carries a rail sets it
   `true` so its own view cycles alongside the mounted sights. (Optic hosts only.)
 
-A mounted item is any normal attachment of an allowed type. It renders its whole model at the rail node.
+A mounted item is any normal attachment of an allowed type (and, if set, listed in `allow_attachments`). It
+renders its whole model at the rail node.
 
 ### Lasers on a rail
 

@@ -5,6 +5,8 @@ import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.client.animation.AnimationController;
 import com.tacz.guns.api.client.animation.Animations;
 import com.tacz.guns.api.client.animation.ObjectAnimation;
+import com.tacz.guns.api.client.animation.ObjectAnimationRunner;
+import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
@@ -12,12 +14,16 @@ import com.tacz.guns.api.item.nbt.AttachmentItemDataAccessor;
 import com.tacz.guns.client.model.BedrockAttachmentModel;
 import com.tacz.guns.client.resource.ClientAssetsManager;
 import com.tacz.guns.client.resource.pojo.animation.bedrock.BedrockAnimationFile;
+import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.RenaissanceLibMod;
+import net.tkg.RenaissanceLib.attachment.AimAnimation;
+import net.tkg.RenaissanceLib.attachment.AimAnimationModifier;
 import net.tkg.RenaissanceLib.attachment.AttachmentStates;
 import net.tkg.RenaissanceLib.attachment.AttachmentStatesModifier;
 import net.tkg.RenaissanceLib.attachment.AttachmentToggleTargets;
@@ -27,12 +33,16 @@ import net.tkg.RenaissanceLib.attachment.ToggleTarget;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 @OnlyIn(Dist.CLIENT)
 public final class AttachmentAnimationManager {
 
     private static final int TRACK = 0;
+    /** ADS animations get their own track, so they layer with toggle states and fire clips (track 0). */
+    private static final int AIM_TRACK = 1;
 
     private static final float TRANSITION_SECONDS = 0.15f;
 
@@ -43,15 +53,21 @@ public final class AttachmentAnimationManager {
     private static final Map<ResourceLocation, String> LAST_STATE = new HashMap<>();
 
     private static final Map<ResourceLocation, Boolean> UNAVAILABLE = new HashMap<>();
+    /** Last seen ADS state per attachment (aim-in/out style), to catch the press/release edge. */
+    private static final Map<ResourceLocation, Boolean> LAST_AIM = new HashMap<>();
+    /** Attachments winding {@code aim_in} back (released ADS without an {@code aim_out}). */
+    private static final Set<ResourceLocation> REWINDING = new HashSet<>();
+    private static final Set<String> WARNED_AIM_CLIPS = new HashSet<>();
 
     private AttachmentAnimationManager() {}
 
     public static void tick(ItemStack gunItem) {
         if (IGun.getIGunOrNull(gunItem) == null) return;
+        Aim aim = Aim.now();
 
-        // Top-level slots. Both toggle states and fire-reaction animations play through the same per-attachment
-        // controller; drive state changes here and advance the controller once so a fire clip (started by
-        // onGunFire on the same controller) also progresses. A fire-only attachment has no states.
+        // Top-level slots. Toggle states, fire-reaction and ADS animations all play through the same
+        // per-attachment controller; drive state changes and the aim clip here and advance the controller once so
+        // a fire clip (started by onGunFire on the same controller) also progresses.
         for (AttachmentType type : AttachmentType.values()) {
             if (type == AttachmentType.NONE) continue;
 
@@ -61,9 +77,11 @@ public final class AttachmentAnimationManager {
             AttachmentStatesModifier.States states = AttachmentStates.getStates(gunItem, type);
             boolean hasStates = states != null && states.getAnimationFile() != null;
             FireAnimationModifier.Spec fire = FireAnimation.get(gunItem, type);
-            if (!hasStates && fire == null) continue;
+            AimAnimationModifier.Spec aimSpec = AimAnimation.get(gunItem, type);
+            if (!hasStates && fire == null && aimSpec == null) continue;
 
-            String animationFile = hasStates ? states.getAnimationFile() : fire.getAnimationFile();
+            String animationFile = hasStates ? states.getAnimationFile()
+                    : fire != null ? fire.getAnimationFile() : aimSpec.getAnimationFile();
             AnimationController controller = getController(attachmentId, animationFile);
             if (controller == null) continue;
 
@@ -71,29 +89,128 @@ public final class AttachmentAnimationManager {
                 reconcileStateToZoom(gunItem, type, states, attachmentId);
                 runStateClipOnChange(controller, attachmentId, states, AttachmentStates.getState(gunItem, type));
             }
+            if (aimSpec != null) driveAim(controller, attachmentId, aimSpec, aim);
             controller.update();
         }
 
-        // Rail-mounted optics: their own model animation plays through the same shared BedrockAttachmentModel
+        // Rail-mounted attachments: their own model animation plays through the same shared BedrockAttachmentModel
         // (per attachment id) that the rail sight renderer draws, so driving the controller here animates them.
         ActiveOptic active = ActiveOptic.resolve(gunItem);
         for (ToggleTarget target : AttachmentToggleTargets.railTargets(gunItem)) {
             ItemStack mounted = AttachmentToggleTargets.getItem(gunItem, target);
             AttachmentStatesModifier.States states = AttachmentStates.getStatesForItem(mounted);
-            if (states == null || states.getAnimationFile() == null) continue;
+            boolean hasStates = states != null && states.getAnimationFile() != null;
+            AimAnimationModifier.Spec aimSpec = AimAnimation.getForItem(mounted);
+            if (!hasStates && aimSpec == null) continue;
 
             ResourceLocation attachmentId = idForItem(mounted);
             if (attachmentId == null) continue;
 
-            AnimationController controller = getController(attachmentId, states.getAnimationFile());
+            AnimationController controller = getController(attachmentId,
+                    hasStates ? states.getAnimationFile() : aimSpec.getAnimationFile());
             if (controller == null) continue;
 
-            // Keep the sight's state in step with the shared zoom-key cycle, so cycling the view with the
-            // zoom key plays the matching fold/deploy animation (mirrors reconcileStateToZoom for the scope).
-            reconcileRailStateToZoom(gunItem, target, states, active);
-            runStateClipOnChange(controller, attachmentId, states, AttachmentStates.getState(gunItem, target));
+            if (hasStates) {
+                // Keep the sight's state in step with the shared zoom-key cycle, so cycling the view with the
+                // zoom key plays the matching fold/deploy animation (mirrors reconcileStateToZoom for the scope).
+                reconcileRailStateToZoom(gunItem, target, states, active);
+                runStateClipOnChange(controller, attachmentId, states, AttachmentStates.getState(gunItem, target));
+            }
+            if (aimSpec != null) driveAim(controller, attachmentId, aimSpec, aim);
             controller.update();
         }
+    }
+
+    /** This frame's aim: whether ADS is held, how far the gun has aimed in (0..1), and the time since last frame. */
+    private record Aim(boolean aiming, float progress, long frameNs) {
+        private static long lastNs = 0L;
+
+        static Aim now() {
+            Minecraft mc = Minecraft.getInstance();
+            long now = System.nanoTime();
+            long frameNs = lastNs == 0L ? 0L : Math.min(now - lastNs, 100_000_000L);
+            lastNs = now;
+            if (mc.player == null) return new Aim(false, 0f, frameNs);
+            IClientPlayerGunOperator operator = IClientPlayerGunOperator.fromLocalPlayer(mc.player);
+            float progress = operator.getClientAimingProgress(mc.getFrameTime());
+            return new Aim(operator.isAim(), Float.isFinite(progress) ? Mth.clamp(progress, 0f, 1f) : 0f, frameNs);
+        }
+    }
+
+    /**
+     * Drive an attachment's {@code aim_animation} on its own track ({@link #AIM_TRACK}, so it layers with toggle
+     * states and fire clips on track 0).
+     * <ul>
+     *   <li>{@code follow}: the clip is held paused at the gun's aim progress × its length, every frame.</li>
+     *   <li>{@code aim_in}/{@code aim_out}: played on the ADS press/release edge. Without {@code aim_out}, release
+     *       winds {@code aim_in} back from wherever it got to; pressing again mid-rewind carries on forward.</li>
+     * </ul>
+     */
+    private static void driveAim(AnimationController controller, ResourceLocation attachmentId,
+                                 AimAnimationModifier.Spec spec, Aim aim) {
+        String follow = spec.getFollow();
+        if (follow != null) {
+            ObjectAnimationRunner runner = runnerFor(controller, follow);
+            if (runner == null) {
+                if (!hasClip(controller, attachmentId, spec, follow)) return;
+                controller.runAnimation(AIM_TRACK, follow, ObjectAnimation.PlayType.PLAY_ONCE_HOLD, 0f);
+                runner = controller.getAnimation(AIM_TRACK);
+                if (runner == null) return;
+            }
+            runner.pause();
+            runner.setProgressNs((long) (aim.progress() * runner.getAnimation().getMaxEndTimeS() * 1e9));
+            return;
+        }
+
+        String aimIn = spec.getAimIn();
+        Boolean was = LAST_AIM.put(attachmentId, aim.aiming());
+        if (was != null && was != aim.aiming()) {
+            REWINDING.remove(attachmentId);
+            ObjectAnimationRunner current = runnerFor(controller, aimIn);
+            if (aim.aiming()) {
+                if (current != null && current.isPausing()) {
+                    current.run(); // interrupted rewind — carry on forward from here
+                } else if (hasClip(controller, attachmentId, spec, aimIn)) {
+                    controller.runAnimation(AIM_TRACK, aimIn, ObjectAnimation.PlayType.PLAY_ONCE_HOLD, TRANSITION_SECONDS);
+                }
+            } else if (spec.getAimOut() != null) {
+                if (hasClip(controller, attachmentId, spec, spec.getAimOut())) {
+                    controller.runAnimation(AIM_TRACK, spec.getAimOut(), ObjectAnimation.PlayType.PLAY_ONCE_HOLD,
+                            TRANSITION_SECONDS);
+                }
+            } else if (current != null) {
+                current.pause();
+                REWINDING.add(attachmentId);
+            }
+        }
+        if (REWINDING.contains(attachmentId)) {
+            ObjectAnimationRunner current = runnerFor(controller, aimIn);
+            if (current == null) {
+                REWINDING.remove(attachmentId);
+                return;
+            }
+            long progress = Math.max(0L, Math.min(current.getProgressNs(),
+                    (long) (current.getAnimation().getMaxEndTimeS() * 1e9)) - aim.frameNs());
+            current.setProgressNs(progress);
+            if (progress == 0L) REWINDING.remove(attachmentId);
+        }
+    }
+
+    /** The runner on the aim track if it's playing {@code clip}, else {@code null}. */
+    @Nullable
+    private static ObjectAnimationRunner runnerFor(AnimationController controller, @Nullable String clip) {
+        ObjectAnimationRunner runner = controller.getAnimation(AIM_TRACK);
+        return runner != null && clip != null && clip.equals(runner.getAnimation().name) ? runner : null;
+    }
+
+    private static boolean hasClip(AnimationController controller, ResourceLocation attachmentId,
+                                   AimAnimationModifier.Spec spec, String clip) {
+        if (controller.containPrototype(clip)) return true;
+        if (WARNED_AIM_CLIPS.add(attachmentId + "#" + clip)) {
+            RenaissanceLibMod.LOGGER.warn("[RenaissanceLib] Attachment {} has no aim_animation clip '{}' in {}",
+                    attachmentId, clip, spec.getAnimationFile());
+        }
+        return false;
     }
 
     /**
@@ -259,5 +376,8 @@ public final class AttachmentAnimationManager {
         CONTROLLERS.clear();
         LAST_STATE.clear();
         UNAVAILABLE.clear();
+        LAST_AIM.clear();
+        REWINDING.clear();
+        WARNED_AIM_CLIPS.clear();
     }
 }

@@ -64,12 +64,15 @@ public final class AttachmentOverrides {
             if (!modifiers.containsKey(FireAnimationModifier.ID)) {
                 modifiers.put(FireAnimationModifier.ID, new FireAnimationModifier());
             }
+            if (!modifiers.containsKey(AimAnimationModifier.ID)) {
+                modifiers.put(AimAnimationModifier.ID, new AimAnimationModifier());
+            }
             MinecraftForge.EVENT_BUS.register(AttachmentOverrides.class);
             registered = true;
             RenaissanceLibMod.LOGGER.info(
-                    "[RenaissanceLib] Registered attachment modifiers '{}', '{}', '{}', '{}', '{}', '{}', '{}'.",
+                    "[RenaissanceLib] Registered attachment modifiers '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}'.",
                     FireModeModifier.ID, AttachmentStatesModifier.ID, ScopeShaderModifier.ID, RailsModifier.ID,
-                    UnderbarrelDataModifier.ID, ConversionModifier.ID, FireAnimationModifier.ID);
+                    UnderbarrelDataModifier.ID, ConversionModifier.ID, FireAnimationModifier.ID, AimAnimationModifier.ID);
         } catch (Throwable t) {
             RenaissanceLibMod.LOGGER.error(
                     "[RenaissanceLib] Failed to register attachment modifiers; "

@@ -123,7 +123,7 @@ Because the weapon fully becomes the converted gun, the addon tidies up so it st
 **Log check:** on startup the conversion modifier must be registered:
 
 ```
-[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation'.
+[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation'.
 ```
 
 If `conversion` isn't in that list, the `conversion` block in your kit files won't be read.

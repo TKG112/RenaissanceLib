@@ -53,6 +53,8 @@ toggle clip. That's the whole setup — install the attachment and fire.
 
 ## 3. Combining with toggle states
 
+(ADS animations run on their own track and layer with both — see [ADS Animations](AIM_ANIMATIONS.md).)
+
 A fire animation and **toggleable** states (see [Toggleable Attachments](TOGGLEABLE_ATTACHMENTS.md)) on
 the *same* attachment share one animation track — a shot's clip plays over the current state. If you need
 both behaviours at once, split them across two attachments. Most fire-reaction parts (charging handles,
@@ -75,7 +77,7 @@ If an attachment uses both a `states` block and a `fire_animation` block, point 
 **Log check:** on startup the fire-animation modifier must be registered:
 
 ```
-[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation'.
+[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation'.
 ```
 
 If `fire_animation` isn't in that list, the block in your attachment files won't be read.

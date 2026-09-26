@@ -328,7 +328,7 @@ When the underbarrel is the active weapon and you aim, the camera aligns to `iro
 **Log check:** on startup you should see the underbarrel modifier registered:
 
 ```
-[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation'.
+[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation'.
 ```
 
 If `underbarrel_data` isn't in that list, none of the underbarrel keys will be read.

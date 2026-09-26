@@ -53,7 +53,7 @@ mounts the attachment, so it has to be authored per gun. See
 
 **Fire-select is now tap-or-hold, on every gun.** A quick tap of the fire-select key cycles fire
 modes exactly like vanilla TaC:Z; holding it (~¼ second) opens a **fire-mode radial** to pick a mode
-directly — point and release. It lists the gun's modes (plus binary when offered). When an
+directly — point and release. It lists the gun's modes (plus binary / manual when offered). When an
 [underbarrel](UNDERBARREL_GUNS.md) is installed the radial shows **both** weapons' modes at once (the
 underbarrel's tinted amber) and doubles as a weapon selector — picking an underbarrel mode switches to
 the underbarrel, picking a host mode switches back. Nothing to configure — it works from the gun's

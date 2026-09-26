@@ -57,9 +57,9 @@ public class UnderbarrelDataModifier implements IAttachmentModifier<GunData, Boo
             if (!obj.has(ID) || !obj.get(ID).isJsonObject()) return new UnderbarrelJsonProperty(null);
 
             JsonObject underbarrelData = obj.getAsJsonObject(ID);
-            // Same "binary" fire_mode translation a normal gun gets (JsonDataManagerMixin) — the underbarrel
-            // parses on this separate path, so apply it here so authors can write "binary" in its fire_mode too.
-            BinaryFireModeJson.translate(underbarrelData);
+            // Same "binary"/"manual" fire_mode translation a normal gun gets (JsonDataManagerMixin) — the underbarrel
+            // parses on this separate path, so apply it here so authors can write them in its fire_mode too.
+            SemiVariantJson.translate(underbarrelData);
 
             GunData gunData = CommonAssetsManager.GSON.fromJson(underbarrelData, GunData.class);
             return new UnderbarrelJsonProperty(gunData);

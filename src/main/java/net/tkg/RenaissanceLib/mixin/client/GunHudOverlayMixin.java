@@ -12,9 +12,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import net.tkg.RenaissanceLib.RenaissanceLibMod;
 import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
-import net.tkg.RenaissanceLib.attachment.BinaryFireMode;
+import net.tkg.RenaissanceLib.attachment.SemiVariant;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAmmo;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelFireMode;
@@ -30,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 /**
  * Adapts the gun ammo HUD for RenaissanceLib features:
  * <ul>
- *   <li>Draws the binary fire-mode icon (TaC:Z falls back to the SEMI texture for binary).</li>
+ *   <li>Draws the semi variants' fire-mode icons (binary, manual — TaC:Z only knows their underlying SEMI).</li>
  *   <li>When the underbarrel is the active weapon, shows <em>its</em> ammo — current / magazine / spare
  *       inventory — instead of the host gun's, by swapping the values the HUD reads. All swaps are gated on
  *       the underbarrel being active, so the host gun's HUD is unchanged.</li>
@@ -38,9 +37,6 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  */
 @Mixin(value = GunHudOverlay.class, remap = false)
 public class GunHudOverlayMixin {
-    private static final ResourceLocation BINARY_TEXTURE =
-            new ResourceLocation(RenaissanceLibMod.MOD_ID, "textures/hud/fire_mode_binary.png");
-
     @Shadow
     private static int cacheMaxAmmoCount;
 
@@ -54,19 +50,21 @@ public class GunHudOverlayMixin {
                     ordinal = 1,
                     remap = true),
             index = 0)
-    private ResourceLocation renaissance$binaryFireModeIcon(ResourceLocation original) {
+    private ResourceLocation renaissance$semiVariantFireModeIcon(ResourceLocation original) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return original;
         ItemStack held = player.getMainHandItem();
         GunData ub = renaissance$activeUnderbarrel(held);
         if (ub != null) {
-            // The underbarrel drives the icon: its binary selection, else its OWN fire mode. Otherwise the host
+            // The underbarrel drives the icon: its variant selection, else its OWN fire mode. Otherwise the host
             // gun's mode icon (the `original` TaC:Z chose) would wrongly stay showing while the UB is active.
-            if (UnderbarrelFireMode.isBinary(held, ub)) return BINARY_TEXTURE;
+            SemiVariant variant = UnderbarrelFireMode.variant(held, ub);
+            if (variant != null) return FireModeWheel.iconFor(variant);
             FireMode mode = UnderbarrelFireMode.get(held, ub);
             return mode != null ? FireModeWheel.iconFor(mode) : original;
         }
-        return BinaryFireMode.isActive(held) ? BINARY_TEXTURE : original;
+        SemiVariant variant = SemiVariant.active(held);
+        return variant != null ? FireModeWheel.iconFor(variant) : original;
     }
 
     // ---- underbarrel HUD gun image ----------------------------------------------------------------------

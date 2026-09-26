@@ -148,9 +148,9 @@ public class FireModeModifier implements IAttachmentModifier<FireModeModifier.Sp
     }
 
     public static class Spec {
-        // Parsed as raw strings, not List<FireMode>, so "binary" can sit in the list next to the
+        // Parsed as raw strings, not List<FireMode>, so "binary"/"manual" can sit in the list next to the
         // real modes: Gson would turn an unknown enum token into null, corrupting the list. We split
-        // the tokens ourselves into real FireModes (getXModes) and the binary pseudo-mode (xHasBinary).
+        // the tokens ourselves into real FireModes (getXModes) and the semi variants (xHas).
         @SerializedName("set")
         @Nullable
         private List<String> set = null;
@@ -194,16 +194,16 @@ public class FireModeModifier implements IAttachmentModifier<FireModeModifier.Sp
             return toModes(remove);
         }
 
-        public boolean setHasBinary() {
-            return hasBinary(set);
+        public boolean setHas(SemiVariant variant) {
+            return has(set, variant);
         }
 
-        public boolean addHasBinary() {
-            return hasBinary(add);
+        public boolean addHas(SemiVariant variant) {
+            return has(add, variant);
         }
 
-        public boolean removeHasBinary() {
-            return hasBinary(remove);
+        public boolean removeHas(SemiVariant variant) {
+            return has(remove, variant);
         }
 
         private static List<FireMode> toModes(@Nullable List<String> tokens) {
@@ -216,10 +216,10 @@ public class FireModeModifier implements IAttachmentModifier<FireModeModifier.Sp
             return modes;
         }
 
-        private static boolean hasBinary(@Nullable List<String> tokens) {
+        private static boolean has(@Nullable List<String> tokens, SemiVariant variant) {
             if (tokens == null) return false;
             for (String token : tokens) {
-                if (token != null && "binary".equalsIgnoreCase(token.trim())) return true;
+                if (variant.matches(token)) return true;
             }
             return false;
         }
@@ -231,7 +231,7 @@ public class FireModeModifier implements IAttachmentModifier<FireModeModifier.Sp
                 case "auto":  return FireMode.AUTO;
                 case "semi":  return FireMode.SEMI;
                 case "burst": return FireMode.BURST;
-                default:      return null; // "binary" (handled separately) or anything unrecognized
+                default:      return null; // a semi variant (handled separately) or anything unrecognized
             }
         }
     }

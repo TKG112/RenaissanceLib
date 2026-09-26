@@ -5,23 +5,22 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 /**
- * Lets pack authors write {@code "binary"} directly in a gun-data {@code fire_mode} array — the same way
- * a normal gun declares binary.
+ * Lets pack authors write the {@link SemiVariant} tokens ({@code "binary"}, {@code "manual"}) directly in a gun-data
+ * {@code fire_mode} array, next to the real modes.
  *
- * <p>TaC:Z parses {@code fire_mode} straight into the fixed {@code FireMode} enum, which has no binary value,
- * so a raw {@code "binary"} entry can't load. This strips {@code "binary"} out of the array and records its
- * position (1-based, so it stays truthy) into {@code script_param.binary_fire_mode} — the flag every binary
- * consumer reads ({@link AttachmentOverrides#isBinaryCapable} for the host gun,
- * {@link UnderbarrelFireMode#binaryAvailable} for an underbarrel).
+ * <p>TaC:Z parses {@code fire_mode} straight into the fixed {@code FireMode} enum, which has no such values, so a raw
+ * token can't load. This strips each variant token out of the array and records its position (1-based, so it stays
+ * truthy) into {@code script_param.<token>_fire_mode} — the flag every consumer reads
+ * ({@link AttachmentOverrides#availableVariants} for the host gun, {@link UnderbarrelFireMode} for an underbarrel).
  *
  * <p>Shared because the two gun-data parse paths differ: a normal gun goes through {@code JsonDataManager}
  * (see {@code JsonDataManagerMixin}); an underbarrel's embedded {@code underbarrel_data} is parsed directly by
  * {@link UnderbarrelDataModifier} and would otherwise miss this translation.
  */
-public final class BinaryFireModeJson {
-    private BinaryFireModeJson() {}
+public final class SemiVariantJson {
+    private SemiVariantJson() {}
 
-    /** Translate a gun-data JSON object in place: {@code "binary"} in {@code fire_mode} → {@code script_param.binary_fire_mode}. */
+    /** Translate a gun-data JSON object in place: variant tokens in {@code fire_mode} → {@code script_param}. */
     public static void translate(JsonObject gunDataObj) {
         if (gunDataObj == null) return;
         JsonElement fireModeElement = gunDataObj.get("fire_mode");
@@ -29,16 +28,17 @@ public final class BinaryFireModeJson {
 
         JsonArray original = fireModeElement.getAsJsonArray();
         JsonArray cleaned = new JsonArray();
-        int binaryIndex = -1;
+        JsonObject found = new JsonObject();
         for (int i = 0; i < original.size(); i++) {
             JsonElement entry = original.get(i);
-            if (entry.isJsonPrimitive() && "binary".equalsIgnoreCase(entry.getAsString())) {
-                if (binaryIndex < 0) binaryIndex = i;
-            } else {
+            SemiVariant variant = entry.isJsonPrimitive() ? SemiVariant.byToken(entry.getAsString()) : null;
+            if (variant == null) {
                 cleaned.add(entry);
+            } else if (!found.has(variant.scriptParam())) {
+                found.addProperty(variant.scriptParam(), i + 1);
             }
         }
-        if (binaryIndex < 0) return;
+        if (found.size() == 0) return;
 
         gunDataObj.add("fire_mode", cleaned);
         JsonObject scriptParam;
@@ -48,6 +48,6 @@ public final class BinaryFireModeJson {
             scriptParam = new JsonObject();
             gunDataObj.add("script_param", scriptParam);
         }
-        scriptParam.addProperty("binary_fire_mode", binaryIndex + 1);
+        found.entrySet().forEach(e -> scriptParam.add(e.getKey(), e.getValue()));
     }
 }

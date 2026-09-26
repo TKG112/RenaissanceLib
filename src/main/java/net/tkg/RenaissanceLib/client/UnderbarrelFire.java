@@ -17,6 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
+import net.tkg.RenaissanceLib.attachment.SemiVariant;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAmmo;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelCache;
@@ -83,11 +84,12 @@ public final class UnderbarrelFire {
         boolean rateReady = now - lastFireMs >= intervalMs;
 
         boolean auto = UnderbarrelFireMode.get(gun, ubData) == FireMode.AUTO;
-        boolean binary = UnderbarrelFireMode.isBinary(gun, ubData);
+        SemiVariant variant = UnderbarrelFireMode.variant(gun, ubData);
+        boolean onRelease = variant != null && variant.firesOnRelease();
         boolean pressEdge = down && !wasDown;
         boolean releaseEdge = !down && wasDown;
         // AUTO: fire while held. Otherwise fire on the press edge, and — in binary — also on the release edge.
-        boolean trigger = rateReady && (auto ? down : (pressEdge || (binary && releaseEdge)));
+        boolean trigger = rateReady && (auto ? down : (pressEdge || (onRelease && releaseEdge)));
 
         if (trigger) {
             NetworkHandler.CHANNEL.sendToServer(new ClientMessageFireUnderbarrel());

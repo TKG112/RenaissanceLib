@@ -93,6 +93,7 @@ public class RenaissanceLibMod {
                 protected void apply(Void v, ResourceManager rm, ProfilerFiller p) {
                     ShaderManager.clearCache();
                     net.tkg.RenaissanceLib.client.refit.RefitBlur.close();
+                    net.tkg.RenaissanceLib.client.FireModeWheel.clearIconCache();
 
                     AttachmentAnimationManager.clearCache();
                 }

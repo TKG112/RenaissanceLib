@@ -14,16 +14,14 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.tkg.RenaissanceLib.RenaissanceLibMod;
 import net.tkg.RenaissanceLib.attachment.AttachmentOverrides;
-import net.tkg.RenaissanceLib.attachment.BinaryFireMode;
 import net.tkg.RenaissanceLib.attachment.ConversionKit;
+import net.tkg.RenaissanceLib.attachment.SemiVariant;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 @Mixin(value = ModernKineticGunItem.class, remap = false)
@@ -66,9 +64,9 @@ public abstract class ModernKineticGunItemMixin {
             GunData gunData = indexOpt.get().getGunData();
 
             List<FireMode> available = AttachmentOverrides.effectiveFireModes(gunItem, gunData);
-            boolean binaryCapable = AttachmentOverrides.isBinaryCapable(gunItem, gunData);
+            List<SemiVariant> variants = AttachmentOverrides.availableVariants(gunItem, gunData);
 
-            if (!binaryCapable) {
+            if (variants.isEmpty()) {
                 if (available.isEmpty()) return;
                 if (available.equals(gunData.getFireModeSet())) return;
                 FireMode current = iGun.getFireMode(gunItem);
@@ -78,49 +76,27 @@ public abstract class ModernKineticGunItemMixin {
                 return;
             }
 
-            // Binary-capable: weave the binary pseudo-mode into the cycle. If the gun authored it in
-            // its fire_mode array we honour that position (recorded as a 1-based index); otherwise it
-            // sits right after SEMI (or at the end). Landing on it sets the underlying mode to SEMI
-            // and flags binary; any real mode clears the flag.
+            // Semi variants (binary, manual) available: weave them into the cycle (SemiVariant.cycle — at the
+            // position authored in fire_mode, else right after SEMI). Landing on one sets the underlying mode
+            // to SEMI and records the variant; any real mode clears it.
             if (available.isEmpty()) available = gunData.getFireModeSet();
-            List<Object> entries = new ArrayList<>(available);
-            int insertAt = binaryInsertIndex(gunData);
-            if (insertAt >= 0) {
-                entries.add(Math.min(insertAt, entries.size()), BinaryFireMode.MARKER);
-            } else {
-                int semiIndex = entries.indexOf(FireMode.SEMI);
-                if (semiIndex >= 0) {
-                    entries.add(semiIndex + 1, BinaryFireMode.MARKER);
-                } else {
-                    entries.add(BinaryFireMode.MARKER);
-                }
-            }
+            List<Object> entries = SemiVariant.cycle(available, variants, gunData);
 
-            int currentIndex = BinaryFireMode.isActive(gunItem)
-                    ? entries.indexOf(BinaryFireMode.MARKER)
-                    : entries.indexOf(iGun.getFireMode(gunItem));
+            SemiVariant active = SemiVariant.active(gunItem);
+            int currentIndex = active != null ? entries.indexOf(active) : entries.indexOf(iGun.getFireMode(gunItem));
             if (currentIndex < 0) currentIndex = 0;
 
             Object next = entries.get((currentIndex + 1) % entries.size());
-            if (next == BinaryFireMode.MARKER) {
+            if (next instanceof SemiVariant variant) {
                 iGun.setFireMode(gunItem, FireMode.SEMI);
-                BinaryFireMode.setActive(gunItem, true);
+                SemiVariant.setActive(gunItem, variant);
             } else {
                 iGun.setFireMode(gunItem, (FireMode) next);
-                BinaryFireMode.setActive(gunItem, false);
+                SemiVariant.setActive(gunItem, null);
             }
             ci.cancel();
         } catch (Throwable t) {
             RenaissanceLibMod.LOGGER.error("[RenaissanceLib] attachment-aware fireSelect failed", t);
         }
-    }
-
-    /** The 0-based cycle position for binary authored in the gun's {@code fire_mode} array, or -1. */
-    private static int binaryInsertIndex(GunData gunData) {
-        Map<String, Object> params = gunData.getScriptParam();
-        if (params != null && params.get("binary_fire_mode") instanceof Number number && number.doubleValue() >= 1) {
-            return (int) number.doubleValue() - 1;
-        }
-        return -1;
     }
 }

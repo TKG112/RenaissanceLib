@@ -144,19 +144,20 @@ gun and synced — they don't touch the host gun's.
 
 ---
 
-## 5. Fire modes & binary
+## 5. Fire modes, binary & manual
 
-The underbarrel cycles the modes in its `fire_mode` list (`semi` / `auto` / `burst`). Binary is **opt-in**,
+The underbarrel cycles the modes in its `fire_mode` list (`semi` / `auto` / `burst`). Binary and manual are **opt-in**,
 exactly like the host gun: add `"binary"` to the underbarrel's `fire_mode` array
 (e.g. `"fire_mode": ["semi", "binary"]`) — it's never auto-added just because the underbarrel can fire semi.
 When present, binary is added to the underbarrel's cycle and fires one shot on trigger **press** and one on
-**release**.
+**release**. `"manual"` works the same way: plain semi with its own name and icon (see
+[Fire-Mode Attachments §1b](FIRE_MODE_ATTACHMENTS.md)).
 
 **Fire-mode radial.** Holding the fire-select key (~¼ second) opens a radial; point and release to pick a mode
 directly (a quick tap still just cycles). This works on any gun, not only underbarrels.
 
 When a gun has an underbarrel installed, the radial shows **both** weapons' modes in one ring — the host gun's
-(including its binary) and the underbarrel's — so it doubles as a **weapon selector**. The underbarrel's
+(including its binary / manual) and the underbarrel's — so it doubles as a **weapon selector**. The underbarrel's
 segments are tinted a distinct amber, and the header names the weapon the highlighted segment belongs to
 (`Main Gun` / `Underbarrel`). Picking a host segment switches to the host and sets that mode; picking an
 underbarrel segment switches to (and arms) the underbarrel and sets that mode. So one gesture both selects the

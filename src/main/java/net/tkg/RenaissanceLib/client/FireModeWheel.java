@@ -12,10 +12,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import net.tkg.RenaissanceLib.RenaissanceLibMod;
 import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
 import net.tkg.RenaissanceLib.attachment.AttachmentOverrides;
-import net.tkg.RenaissanceLib.attachment.BinaryFireMode;
+import net.tkg.RenaissanceLib.attachment.SemiVariant;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelFireMode;
 import net.tkg.RenaissanceLib.network.ClientMessageSetActiveWeapon;
@@ -23,13 +22,16 @@ import net.tkg.RenaissanceLib.network.ClientMessageSetFireMode;
 import net.tkg.RenaissanceLib.network.ClientMessageSetUnderbarrelFireMode;
 import net.tkg.RenaissanceLib.network.NetworkHandler;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The fire-mode radial wheel — opened by holding the fire-select key (a tap still cycles; see
  * {@code FireSelectInput}). It lists the <em>active</em> weapon's fire modes (the host gun's, or the
- * underbarrel's when it's active), plus the binary pseudo-mode when that weapon supports it. Picking a mode
+ * underbarrel's when it's active), plus the semi variants (binary, manual) that weapon offers. Picking a mode
  * sets it directly (server-authoritative), which TaC:Z's cycle-only fire-select can't do.
  *
  * <p>Reuses the shared {@link RadialWheelState}/{@link RadialRing} visuals like the attachment wheel.
@@ -40,14 +42,14 @@ public final class FireModeWheel {
     public static final ResourceLocation SEMI_ICON = new ResourceLocation("tacz", "textures/hud/fire_mode_semi.png");
     public static final ResourceLocation AUTO_ICON = new ResourceLocation("tacz", "textures/hud/fire_mode_auto.png");
     public static final ResourceLocation BURST_ICON = new ResourceLocation("tacz", "textures/hud/fire_mode_burst.png");
-    public static final ResourceLocation BINARY_ICON =
-            new ResourceLocation(RenaissanceLibMod.MOD_ID, "textures/hud/fire_mode_binary.png");
+
+    private static final Map<SemiVariant, ResourceLocation> VARIANT_ICONS = new EnumMap<>(SemiVariant.class);
 
     /**
      * One selectable fire mode. {@code ubIndex >= 0} = an underbarrel cycle index to set; {@code -1} = a host
-     * gun mode set by {@code mode} + {@code binary}.
+     * gun mode set by {@code mode} + {@code variant} (null = the plain mode).
      */
-    public record Choice(FireMode mode, boolean binary, int ubIndex, ResourceLocation icon, Component label) {}
+    public record Choice(FireMode mode, @Nullable SemiVariant variant, int ubIndex, ResourceLocation icon, Component label) {}
 
     private static final RadialWheelState<Choice> STATE = new RadialWheelState<>(FireModeWheel::apply);
 
@@ -123,10 +125,10 @@ public final class FireModeWheel {
                 .map(index -> index.getGunData()).orElse(null);
         if (gunData == null) return choices;
         for (FireMode mode : AttachmentOverrides.effectiveFireModes(gun, gunData)) {
-            choices.add(new Choice(mode, false, -1, iconFor(mode), labelFor(mode)));
+            choices.add(new Choice(mode, null, -1, iconFor(mode), labelFor(mode)));
         }
-        if (AttachmentOverrides.isBinaryCapable(gun, gunData)) {
-            choices.add(new Choice(FireMode.SEMI, true, -1, BINARY_ICON, binaryLabel()));
+        for (SemiVariant variant : AttachmentOverrides.availableVariants(gun, gunData)) {
+            choices.add(new Choice(FireMode.SEMI, variant, -1, iconFor(variant), labelFor(variant)));
         }
         return choices;
     }
@@ -135,17 +137,14 @@ public final class FireModeWheel {
         List<Choice> choices = new ArrayList<>();
         GunData ubData = Underbarrel.getUnderbarrelData(Underbarrel.getInstalledUnderbarrel(gun));
         if (ubData == null) return choices;
-        List<FireMode> modes = UnderbarrelFireMode.getModes(ubData);
-        int binaryPos = UnderbarrelFireMode.binaryPosition(ubData);
-        int cycleSize = modes.size() + (binaryPos >= 0 ? 1 : 0);
-        // Walk the cycle in order, inserting binary at its authored position so the wheel matches the cycle.
-        int modeIndex = 0;
-        for (int i = 0; i < cycleSize; i++) {
-            if (i == binaryPos) {
-                choices.add(new Choice(FireMode.SEMI, true, i, BINARY_ICON, binaryLabel()));
+        // Walk the cycle in order so the wheel matches it (variants sit at their authored positions).
+        List<Object> cycle = UnderbarrelFireMode.cycle(ubData);
+        for (int i = 0; i < cycle.size(); i++) {
+            if (cycle.get(i) instanceof SemiVariant variant) {
+                choices.add(new Choice(FireMode.SEMI, variant, i, iconFor(variant), labelFor(variant)));
             } else {
-                FireMode mode = modes.get(modeIndex++);
-                choices.add(new Choice(mode, false, i, iconFor(mode), labelFor(mode)));
+                FireMode mode = (FireMode) cycle.get(i);
+                choices.add(new Choice(mode, null, i, iconFor(mode), labelFor(mode)));
             }
         }
         return choices;
@@ -176,8 +175,8 @@ public final class FireModeWheel {
                 NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetActiveWeapon(ActiveWeapon.MAIN));
             }
             iGun.setFireMode(gun, choice.mode()); // client prediction
-            BinaryFireMode.setActive(gun, choice.binary());
-            NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetFireMode(choice.mode(), choice.binary()));
+            SemiVariant.setActive(gun, choice.variant());
+            NetworkHandler.CHANNEL.sendToServer(new ClientMessageSetFireMode(choice.mode(), choice.variant()));
         }
 
         // The radial sets the mode directly (not via TaC:Z's fireSelect), so play the change click ourselves.
@@ -197,7 +196,21 @@ public final class FireModeWheel {
         return Component.translatable(key);
     }
 
-    private static Component binaryLabel() {
-        return Component.translatable("tooltip.renaissance_lib.fire_mode.binary");
+    /**
+     * A semi variant's icon: {@code textures/hud/fire_mode_<token>.png} (ours, or a resource pack's), else the
+     * SEMI icon until one is provided.
+     */
+    public static ResourceLocation iconFor(SemiVariant variant) {
+        return VARIANT_ICONS.computeIfAbsent(variant, v -> Minecraft.getInstance().getResourceManager()
+                .getResource(v.icon()).isPresent() ? v.icon() : SEMI_ICON);
+    }
+
+    /** Forget resolved variant icons (resource reload — a pack may have added or removed one). */
+    public static void clearIconCache() {
+        VARIANT_ICONS.clear();
+    }
+
+    private static Component labelFor(SemiVariant variant) {
+        return Component.translatable(variant.labelKey());
     }
 }

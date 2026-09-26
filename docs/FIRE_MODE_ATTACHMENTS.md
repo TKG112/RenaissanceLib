@@ -27,7 +27,33 @@ This adds one.
 Equip it and the pistol offers only full-auto. Remove it and the gun returns to its normal
 modes.
 
-Valid mode names: `semi`, `auto`, `burst`.
+Valid mode names: `semi`, `auto`, `burst`, plus the two extra modes below: `binary`, `manual`.
+
+---
+
+## 1b. Extra modes: `binary` and `manual`
+
+RenaissanceLib adds two fire modes on top of TaC:Z's three. Both fire like `semi` underneath:
+
+| Mode | Behaviour | HUD / radial icon |
+|---|---|---|
+| `binary` | One shot on trigger **press**, one more on **release** | `renaissance_lib:textures/hud/fire_mode_binary.png` |
+| `manual` | Exactly like `semi`, with its own name and icon (for bolt / pump / lever actions) | `renaissance_lib:textures/hud/fire_mode_manual.png` |
+
+Write them anywhere a mode name goes:
+
+- In a **gun's own** `fire_mode` array: `"fire_mode": ["manual"]` or `["semi", "binary", "auto"]`. They cycle in
+  the position you wrote them.
+- In an attachment's `set` / `add` / `remove`, e.g. `"add": ["binary"]` for a binary trigger group.
+- In an **underbarrel's** `fire_mode` array (see [Underbarrel Guns §5](UNDERBARREL_GUNS.md)).
+
+They're opt-in: a gun that only lists `semi` doesn't get either one. A mode added by an attachment (with no
+authored position) sits right after `semi` in the cycle.
+
+**Icons.** A resource pack can replace either icon by providing a texture at the same path. If the manual icon is
+missing, the SEMI icon is shown instead.
+
+**Lua scripts** see these modes as `SEMI`, since they're built on it.
 
 ---
 
@@ -111,7 +137,7 @@ players can see what an attachment does before equipping it.
 | Symptom | Likely cause |
 |---|---|
 | Nothing changes | Attachment isn't allowed in that slot on that gun (`allow_attachments` tags) |
-| Mode list unchanged | Typo in a mode name — only `semi`, `auto`, `burst` are valid |
+| Mode list unchanged | Typo in a mode name — only `semi`, `auto`, `burst`, `binary`, `manual` are valid |
 | Burst survived when you expected it gone | Used `add`/`remove` on a gun with a mode you didn't account for — use `set` (see §3) |
 | Gun stuck in a removed mode | Shouldn't happen; report it with the gun and attachment ids |
 

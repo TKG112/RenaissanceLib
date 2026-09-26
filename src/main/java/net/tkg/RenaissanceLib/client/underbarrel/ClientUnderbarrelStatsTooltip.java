@@ -20,8 +20,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.tkg.RenaissanceLib.attachment.SemiVariant;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAmmo;
+import net.tkg.RenaissanceLib.attachment.UnderbarrelFireMode;
 import org.joml.Matrix4f;
 import net.minecraft.client.renderer.MultiBufferSource;
 
@@ -98,12 +100,14 @@ public class ClientUnderbarrelStatsTooltip implements ClientTooltipComponent {
         stats.add(Component.translatable("tooltip.renaissance_lib.underbarrel.rpm")
                 .append(Component.literal(String.valueOf(data.getRoundsPerMinute())).withStyle(ChatFormatting.AQUA)));
 
-        List<FireMode> modes = data.getFireModeSet();
-        if (modes != null && !modes.isEmpty()) {
+        // The fire-select cycle, semi variants (binary, manual) included.
+        List<Object> modes = UnderbarrelFireMode.cycle(data);
+        if (!modes.isEmpty()) {
             MutableComponent value = Component.empty();
             for (int i = 0; i < modes.size(); i++) {
                 if (i > 0) value.append(", ");
-                value.append(fireModeName(modes.get(i)));
+                value.append(modes.get(i) instanceof SemiVariant variant
+                        ? Component.translatable(variant.labelKey()) : fireModeName((FireMode) modes.get(i)));
             }
             stats.add(Component.translatable("tooltip.renaissance_lib.underbarrel.fire_modes")
                     .append(value.withStyle(ChatFormatting.AQUA)));

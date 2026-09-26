@@ -12,6 +12,7 @@
     "CommonDataManagerItemLinkMixin",
     "CommonNetworkCacheItemLinkMixin",
     "EntityKineticBulletMixin",
+    "GunDataParseMixin",
     "JsonDataManagerMixin",
     "ModernKineticGunItemMixin"
   ],

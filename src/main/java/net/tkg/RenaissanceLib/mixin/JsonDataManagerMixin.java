@@ -20,7 +20,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * out of the array and records each (with its position) into {@code script_param.<token>_fire_mode}. The gun then
  * loads cleanly and the variant is woven back into the fire-select cycle at that position.
  *
- * <p>Runs at the shared parse point, so the translated JSON is what gets synced to clients too.
+ * <p>Runs at the shared parse point, so the translated JSON is what gets synced to clients too. The TaC:Z beta
+ * parses gun data in its own {@code GunDataManager} instead — hooked by the beta's {@link GunDataParseMixin}.
  */
 @Mixin(value = JsonDataManager.class, remap = false)
 public abstract class JsonDataManagerMixin {

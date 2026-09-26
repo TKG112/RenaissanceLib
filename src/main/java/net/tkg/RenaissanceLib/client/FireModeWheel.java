@@ -124,11 +124,16 @@ public final class FireModeWheel {
         GunData gunData = TimelessAPI.getCommonGunIndex(iGun.getGunId(gun))
                 .map(index -> index.getGunData()).orElse(null);
         if (gunData == null) return choices;
-        for (FireMode mode : AttachmentOverrides.effectiveFireModes(gun, gunData)) {
-            choices.add(new Choice(mode, null, -1, iconFor(mode), labelFor(mode)));
-        }
-        for (SemiVariant variant : AttachmentOverrides.availableVariants(gun, gunData)) {
-            choices.add(new Choice(FireMode.SEMI, variant, -1, iconFor(variant), labelFor(variant)));
+        // The same cycle the fire-select key walks (variants in place, a hidden implicit SEMI left out).
+        List<FireMode> modes = AttachmentOverrides.effectiveFireModes(gun, gunData);
+        if (modes.isEmpty()) modes = gunData.getFireModeSet();
+        for (Object entry : SemiVariant.cycle(modes, AttachmentOverrides.availableVariants(gun, gunData), gunData)) {
+            if (entry instanceof SemiVariant variant) {
+                choices.add(new Choice(FireMode.SEMI, variant, -1, iconFor(variant), labelFor(variant)));
+            } else {
+                FireMode mode = (FireMode) entry;
+                choices.add(new Choice(mode, null, -1, iconFor(mode), labelFor(mode)));
+            }
         }
         return choices;
     }

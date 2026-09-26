@@ -82,7 +82,7 @@ public abstract class ModernKineticGunItemMixin {
             if (available.isEmpty()) available = gunData.getFireModeSet();
             List<Object> entries = SemiVariant.cycle(available, variants, gunData);
 
-            SemiVariant active = SemiVariant.active(gunItem);
+            SemiVariant active = SemiVariant.resolve(gunItem);
             int currentIndex = active != null ? entries.indexOf(active) : entries.indexOf(iGun.getFireMode(gunItem));
             if (currentIndex < 0) currentIndex = 0;
 

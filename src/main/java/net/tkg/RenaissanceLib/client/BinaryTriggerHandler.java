@@ -49,7 +49,7 @@ public class BinaryTriggerHandler {
     }
 
     private static boolean firesOnRelease(ItemStack gunItem) {
-        SemiVariant variant = SemiVariant.active(gunItem);
+        SemiVariant variant = SemiVariant.resolve(gunItem);
         return variant != null && variant.firesOnRelease();
     }
 }

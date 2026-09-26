@@ -43,7 +43,8 @@ RenaissanceLib adds two fire modes on top of TaC:Z's three. Both fire like `semi
 Write them anywhere a mode name goes:
 
 - In a **gun's own** `fire_mode` array: `"fire_mode": ["manual"]` or `["semi", "binary", "auto"]`. They cycle in
-  the position you wrote them.
+  the position you wrote them. A gun can list **only** these (e.g. `["manual"]` for a bolt-action, or
+  `["binary", "manual"]`): it then offers just those, and a fresh gun starts in the first one.
 - In an attachment's `set` / `add` / `remove`, e.g. `"add": ["binary"]` for a binary trigger group.
 - In an **underbarrel's** `fire_mode` array (see [Underbarrel Guns §5](UNDERBARREL_GUNS.md)).
 

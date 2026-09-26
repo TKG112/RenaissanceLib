@@ -12,6 +12,7 @@ import com.google.gson.JsonObject;
  * token can't load. This strips each variant token out of the array and records its position (1-based, so it stays
  * truthy) into {@code script_param.<token>_fire_mode} — the flag every consumer reads
  * ({@link AttachmentOverrides#availableVariants} for the host gun, {@link UnderbarrelFireMode} for an underbarrel).
+ * A {@code fire_mode} of <em>only</em> variants keeps a hidden {@code "semi"} (see {@link SemiVariant#hidesSemi}).
  *
  * <p>Shared because the two gun-data parse paths differ: a normal gun goes through {@code JsonDataManager}
  * (see {@code JsonDataManagerMixin}); an underbarrel's embedded {@code underbarrel_data} is parsed directly by
@@ -39,6 +40,12 @@ public final class SemiVariantJson {
             }
         }
         if (found.size() == 0) return;
+        if (cleaned.isEmpty()) {
+            // Only variants listed (e.g. ["manual"]): TaC:Z can't run a gun with no fire mode, and the variants all
+            // fire as SEMI anyway — keep an implicit "semi" underneath, hidden from the cycle (SemiVariant.hidesSemi).
+            cleaned.add("semi");
+            found.addProperty(SemiVariant.IMPLICIT_SEMI, 1);
+        }
 
         gunDataObj.add("fire_mode", cleaned);
         JsonObject scriptParam;

@@ -63,7 +63,7 @@ public class GunHudOverlayMixin {
             FireMode mode = UnderbarrelFireMode.get(held, ub);
             return mode != null ? FireModeWheel.iconFor(mode) : original;
         }
-        SemiVariant variant = SemiVariant.active(held);
+        SemiVariant variant = SemiVariant.resolve(held);
         return variant != null ? FireModeWheel.iconFor(variant) : original;
     }
 

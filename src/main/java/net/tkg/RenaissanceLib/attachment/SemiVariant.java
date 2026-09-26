@@ -1,5 +1,7 @@
 package net.tkg.RenaissanceLib.attachment;
 
+import com.tacz.guns.api.TimelessAPI;
+import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.gun.FireMode;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
 import net.minecraft.nbt.CompoundTag;
@@ -31,6 +33,9 @@ import java.util.Map;
 public enum SemiVariant {
     BINARY("binary", true),
     MANUAL("manual", false);
+
+    /** {@code script_param} flag: the {@code fire_mode} listed only variants, so SEMI is implicit and hidden. */
+    public static final String IMPLICIT_SEMI = "implicit_semi_fire_mode";
 
     private static final String TAG = "RenaissanceLibSemiVariant";
     /** Pre-manual saves stored binary as a boolean; still read so existing guns keep their mode. */
@@ -132,6 +137,7 @@ public enum SemiVariant {
      */
     public static List<Object> cycle(List<FireMode> modes, List<SemiVariant> variants, GunData gunData) {
         List<Object> entries = new ArrayList<>(modes);
+        if (hidesSemi(gunData, variants)) entries.remove(FireMode.SEMI);
         List<SemiVariant> authored = new ArrayList<>(), rest = new ArrayList<>();
         for (SemiVariant v : variants) (v.authoredIndex(gunData) >= 0 ? authored : rest).add(v);
         // Ascending original positions: inserting each at its original index rebuilds the authored order.
@@ -145,6 +151,38 @@ public enum SemiVariant {
             entries.add(at, v);
         }
         return entries;
+    }
+
+    /**
+     * Whether plain SEMI is left out of the cycle: the gun data listed <em>only</em> variants in its
+     * {@code fire_mode} (e.g. {@code ["manual"]}), so {@link SemiVariantJson} kept an implicit {@code "semi"} for
+     * TaC:Z to run on ({@link #IMPLICIT_SEMI}) — shown only as the variants. If attachments take every variant
+     * away, SEMI shows again rather than leaving the gun with nothing.
+     */
+    public static boolean hidesSemi(GunData gunData, List<SemiVariant> variants) {
+        Map<String, Object> params = gunData.getScriptParam();
+        return !variants.isEmpty() && params != null && isTruthy(params.get(IMPLICIT_SEMI));
+    }
+
+    /**
+     * The variant the gun is actually in: the stored one, or — on a gun whose SEMI is hidden ({@link #hidesSemi})
+     * sitting in plain SEMI, e.g. fresh from the creative tab — the first variant of its cycle.
+     */
+    @Nullable
+    public static SemiVariant resolve(ItemStack gunItem) {
+        SemiVariant stored = active(gunItem);
+        if (stored != null) return stored;
+        IGun iGun = IGun.getIGunOrNull(gunItem);
+        if (iGun == null || iGun.getFireMode(gunItem) != FireMode.SEMI) return null;
+        GunData gunData = TimelessAPI.getCommonGunIndex(iGun.getGunId(gunItem))
+                .map(index -> index.getGunData()).orElse(null);
+        if (gunData == null) return null;
+        List<SemiVariant> variants = AttachmentOverrides.availableVariants(gunItem, gunData);
+        if (!hidesSemi(gunData, variants)) return null;
+        for (Object entry : cycle(List.of(), variants, gunData)) {
+            if (entry instanceof SemiVariant variant) return variant;
+        }
+        return null;
     }
 
     static boolean isTruthy(Object value) {

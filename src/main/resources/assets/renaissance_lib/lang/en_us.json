@@ -12,6 +12,7 @@
   "tooltip.renaissance_lib.attachment.fire_mode.set": "Redefines available fire modes",
   "tooltip.renaissance_lib.attachment.fire_mode.add": "Adds a fire mode",
   "tooltip.renaissance_lib.attachment.fire_mode.remove": "Removes a fire mode",
+  "tooltip.renaissance_lib.attachment.recoil_speed": "Recoil speed ×%s",
 
   "key.category.renaissance_lib": "RenaissanceLib",
   "key.renaissance_lib.attachment_wheel.desc": "Open Attachment Wheel",

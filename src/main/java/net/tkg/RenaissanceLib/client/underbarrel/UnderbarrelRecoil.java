@@ -26,15 +26,20 @@ public final class UnderbarrelRecoil {
     private static PolynomialSplineFunction pitchSpline;
     private static PolynomialSplineFunction yawSpline;
     private static long shootTimeStamp = -1L;
+    private static float speed = 1f;
     private static double xRotO;
     private static double yRotO;
 
     private UnderbarrelRecoil() {}
 
-    /** Begin a recoil kick from the given pitch/yaw spline functions (as {@code GunRecoil} generates them). */
-    public static void trigger(PolynomialSplineFunction pitch, PolynomialSplineFunction yaw) {
+    /**
+     * Begin a recoil kick from the given pitch/yaw spline functions (as {@code GunRecoil} generates them), played at
+     * {@code speed} (the attachments' {@code recoil_speed}; 1 = as authored).
+     */
+    public static void trigger(PolynomialSplineFunction pitch, PolynomialSplineFunction yaw, float speed) {
         pitchSpline = pitch;
         yawSpline = yaw;
+        UnderbarrelRecoil.speed = speed;
         shootTimeStamp = System.currentTimeMillis();
         xRotO = 0;
         yRotO = 0;
@@ -44,7 +49,7 @@ public final class UnderbarrelRecoil {
     public static void applyCameraRecoil(ViewportEvent.ComputeCameraAngles event) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
-        long timeTotal = System.currentTimeMillis() - shootTimeStamp;
+        long timeTotal = (long) ((System.currentTimeMillis() - shootTimeStamp) * (double) speed);
         if (pitchSpline != null && pitchSpline.isValidPoint(timeTotal)) {
             double value = pitchSpline.value(timeTotal);
             player.setXRot(player.getXRot() - (float) (value - xRotO));

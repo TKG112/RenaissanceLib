@@ -13,6 +13,7 @@ import com.tacz.guns.resource.pojo.data.gun.GunData;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -81,6 +82,13 @@ public final class UnderbarrelCache {
     public <T> T get(GunProperty<T> key) {
         CacheValue<?> value = cacheValues.get(key.name());
         return value == null ? null : key.type().cast(value.getValue());
+    }
+
+    /** The modified value of one of our own modifiers by id (those have no {@link GunProperty} key), or null. */
+    @Nullable
+    public Object get(String modifierId) {
+        CacheValue<?> value = cacheValues.get(modifierId);
+        return value == null ? null : value.getValue();
     }
 
     /**

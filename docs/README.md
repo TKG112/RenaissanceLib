@@ -16,6 +16,7 @@ driven from the pack files you already write — no new file types.
 | **[Conversion Kits](CONVERSION_KITS.md)** | An attachment that swaps the whole weapon into a different gun you already ship — caliber/platform conversions, restricted variants — locking attachments via the converted gun's own rules | `data/attachments/<name>_data.json` + the base gun's `allow_attachments` |
 | **[Fire-Reaction Animations](FIRE_REACTION_ANIMATIONS.md)** | An attachment plays its own animation when the host gun fires — a reciprocating charging handle, an ejection-port cover, suppressor baffles | `data/attachments/<name>_data.json` |
 | **[ADS Animations](AIM_ANIMATIONS.md)** | An attachment plays its own animation when you aim — a flip-up sight rising, a magnifier swinging in, a lens cover opening; follows the aim or plays aim-in/out clips | `data/attachments/<name>_data.json` |
+| **[Recoil Speed](RECOIL_SPEED.md)** | An attachment changes how fast the gun's camera recoil plays — a slower, rolling kick or a faster snap — without changing its strength | `data/attachments/<name>_data.json` |
 
 *Planned (in development):* a **double-render scope view** that re-renders the world for the lens —
 enabling true night vision / thermal that reveals unlit entities and geometry the post-shaders can't.
@@ -66,7 +67,7 @@ existing `fire_mode` list.
 On startup:
 
 ```
-[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation'.
+[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation', 'recoil_speed'.
 ```
 
 If that line is missing, none of the attachment JSON keys will be read.

@@ -17,6 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.tkg.RenaissanceLib.attachment.ActiveWeapon;
+import net.tkg.RenaissanceLib.attachment.RecoilSpeedModifier;
 import net.tkg.RenaissanceLib.attachment.SemiVariant;
 import net.tkg.RenaissanceLib.attachment.Underbarrel;
 import net.tkg.RenaissanceLib.attachment.UnderbarrelAmmo;
@@ -138,7 +139,7 @@ public final class UnderbarrelFire {
     /**
      * Data-driven recoil, the same as TaC:Z's guns ({@code CameraSetupEvent.initialCameraRecoil}): build
      * pitch/yaw spline functions from the underbarrel's own {@code recoil} data, scaled by its attachments'
-     * recoil modifier (from {@link UnderbarrelCache}) evaluated at the recoil factor, and hand them to
+     * recoil modifier (from {@link UnderbarrelCache}) evaluated at the recoil factor, played at their {@code recoil_speed}, and hand them to
      * {@link UnderbarrelRecoil} which eases the camera kick each frame. No {@code recoil} data → no kick.
      *
      * <p>The factor mirrors TaC:Z: the underbarrel never aims down sights, so the hip-fire factor is 1.0
@@ -153,11 +154,13 @@ public final class UnderbarrelFire {
         if (player != null && !player.isSwimming() && player.getPose() == Pose.SWIMMING) {
             factor = ubData.getCrawlRecoilMultiplier();
         }
-        ParameterizedCachePair<Float, Float> recoilModifier =
-                UnderbarrelCache.compute(gun, Underbarrel.getInstalledUnderbarrel(gun), ubData)
-                        .get(GunProperties.RECOIL);
+        UnderbarrelCache cache = UnderbarrelCache.compute(gun, Underbarrel.getInstalledUnderbarrel(gun), ubData);
+        ParameterizedCachePair<Float, Float> recoilModifier = cache.get(GunProperties.RECOIL);
         float pitchModifier = recoilModifier != null ? (float) recoilModifier.left().eval(factor) : (float) factor;
         float yawModifier = recoilModifier != null ? (float) recoilModifier.right().eval(factor) : (float) factor;
-        UnderbarrelRecoil.trigger(recoil.genPitchSplineFunction(pitchModifier), recoil.genYawSplineFunction(yawModifier));
+        // Its own attachments' recoil_speed (e.g. a muzzle device on the launcher), like the host gun's.
+        float speed = cache.get(RecoilSpeedModifier.ID) instanceof Float f && Float.isFinite(f) && f > 0f ? f : 1f;
+        UnderbarrelRecoil.trigger(recoil.genPitchSplineFunction(pitchModifier), recoil.genYawSplineFunction(yawModifier),
+                speed);
     }
 }

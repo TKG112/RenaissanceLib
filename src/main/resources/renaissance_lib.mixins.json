@@ -22,6 +22,7 @@
     "client.AttachmentItemRendererMixin",
     "client.BedrockAttachmentModelMixin",
     "client.BedrockGunModelMixin",
+    "client.CameraRecoilSpeedMixin",
     "client.CameraSetupEventMixin",
     "client.ClientAttachmentIndexMixin",
     "client.FireSelectKeyMixin",

@@ -77,7 +77,7 @@ If an attachment uses both a `states` block and a `fire_animation` block, point 
 **Log check:** on startup the fire-animation modifier must be registered:
 
 ```
-[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation'.
+[RenaissanceLib] Registered attachment modifiers 'fire_mode', 'states', 'shader', 'rails', 'underbarrel_data', 'conversion', 'fire_animation', 'aim_animation', 'recoil_speed'.
 ```
 
 If `fire_animation` isn't in that list, the block in your attachment files won't be read.

@@ -209,7 +209,7 @@ change *its* stats, separately from the host gun's attachments.
    at (`muzzle_pos`, `extended_mag_pos`, …), exactly like a gun model names its attachment bones.
 
 **In-game:** the underbarrel's slots appear as a **row just below the gun's own attachment row** (anchored at
-the grip column, where the underbarrel rides) — the same layout as the [canted-rail](CANTED_RAIL_SYSTEM.md)
+the grip column, where the underbarrel rides) — the same layout as [hierarchical attachments](HIERARCHICAL_ATTACHMENTS.md)
 sub-slots. Click an empty slot for a picker of matching attachments; click a filled one to unload. The
 attachment renders on the underbarrel at its `<type>_pos` bone and travels with the underbarrel between guns.
 

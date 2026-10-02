@@ -68,7 +68,7 @@ If both `follow` and `aim_in` are given, `follow` wins.
 - **Rest pose.** Author the clip's **first frame as the un-aimed pose**. With `follow`, 0% aimed is the first
   frame, so that's how the attachment looks when you're not aiming.
 - **Rail-mounted too.** Works on an attachment in any slot, including one mounted on a
-  [rail](CANTED_RAIL_SYSTEM.md) (the classic flip-up sight on a side rail).
+  [rail](HIERARCHICAL_ATTACHMENTS.md) (the classic flip-up sight on a side rail).
 - **Any ADS.** It plays whenever the gun aims, whichever optic you're looking through.
 - **First-person.** Like [fire-reaction animations](FIRE_REACTION_ANIMATIONS.md), it plays for your own gun in
   first person.

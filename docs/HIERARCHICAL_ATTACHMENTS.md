@@ -1,4 +1,4 @@
-# Canted Rail System
+# Hierarchical Attachments
 
 A RenaissanceLib feature (TaC:Z addon, Forge 1.20.1) that lets an **attachment declare extra mount points**
 ("rails"). Those mounts appear as extra sub-slots under the host attachment's slot in the refit screen, so a
